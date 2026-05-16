@@ -3,7 +3,7 @@ const http = require("http");
 const path = require("path");
 const { Server } = require("socket.io");
 const cors = require("cors");
-const { pickWinner } = require("./src/scorer");
+const { pickWinner, generatePrompt } = require("./src/scorer");
 
 const app = express();
 app.use(cors());
@@ -18,8 +18,6 @@ const PORT = process.env.PORT || 3001;
 
 // roomId -> { players: [socketId, ...], frames: { socketId: base64 } }
 const rooms = {};
-
-const PROMPT = "Make your best surprised face! 😲";
 
 function startCountdown(roomId) {
   let count = 3;
@@ -62,10 +60,25 @@ io.on("connection", (socket) => {
 
     if (room.players.length === 2) {
       io.to(roomId).emit("game_start", { roomId, players: room.players });
-      io.to(roomId).emit("prompt_ready", { prompt: PROMPT });
-      // 3s pose window, then 3s countdown
-      setTimeout(() => startCountdown(roomId), 3000);
-      console.log(`[game_start] room "${roomId}" — pose window started`);
+      io.to(roomId).emit("prompt_ready", { prompt: "Generating challenge…" });
+
+      generatePrompt()
+        .then((prompt) => {
+          rooms[roomId] && (rooms[roomId].prompt = prompt);
+          io.to(roomId).emit("prompt_ready", { prompt });
+          console.log(`[prompt] "${prompt}"`);
+          // 3s pose window, then 3s countdown
+          setTimeout(() => startCountdown(roomId), 3000);
+        })
+        .catch((err) => {
+          console.error("[generatePrompt] error:", err);
+          const fallback = "Make your best surprised face! 😲";
+          rooms[roomId] && (rooms[roomId].prompt = fallback);
+          io.to(roomId).emit("prompt_ready", { prompt: fallback });
+          setTimeout(() => startCountdown(roomId), 3000);
+        });
+
+      console.log(`[game_start] room "${roomId}" — generating prompt…`);
     }
   });
 
@@ -90,7 +103,7 @@ io.on("connection", (socket) => {
         const { winner: winnerIndex } = await pickWinner(
           room.frames[p1],
           room.frames[p2],
-          PROMPT
+          room.prompt ?? "Make your best surprised face!"
         );
         const winner = winnerIndex === 1 ? p1 : p2;
         console.log(`[game_over] room "${roomId}" — winner: ${winner}`);

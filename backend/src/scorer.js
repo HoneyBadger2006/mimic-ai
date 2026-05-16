@@ -120,4 +120,37 @@ async function pickWinner(frame1, frame2, prompt) {
   return { winner: parsed.winner };
 }
 
-module.exports = { scoreImage, pickWinner };
+/**
+ * Ask Claude to generate a fresh mimic challenge visible on a webcam.
+ * @returns {Promise<string>} e.g. "Pretend you just saw a ghost 👻"
+ */
+async function generatePrompt() {
+  const body = {
+    anthropic_version: "bedrock-2023-05-31",
+    max_tokens: 40,
+    messages: [
+      {
+        role: "user",
+        content:
+          `Generate a short, fun challenge for a webcam mimic game. ` +
+          `It must be something clearly visible on a face or with hands — ` +
+          `like an expression, reaction, or simple pose. ` +
+          `Be creative and varied: mix emotions, movie moments, everyday reactions. ` +
+          `Reply with ONLY the challenge text (under 10 words), add one relevant emoji at the end.`,
+      },
+    ],
+  };
+
+  const command = new InvokeModelCommand({
+    modelId: MODEL_ID,
+    contentType: "application/json",
+    accept: "application/json",
+    body: JSON.stringify(body),
+  });
+
+  const response = await client.send(command);
+  const raw = JSON.parse(Buffer.from(response.body).toString("utf-8"));
+  return raw.content[0].text.trim();
+}
+
+module.exports = { scoreImage, pickWinner, generatePrompt };
