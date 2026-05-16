@@ -1,9 +1,9 @@
 const express = require("express");
 const http = require("http");
+const path = require("path");
 const { Server } = require("socket.io");
 const cors = require("cors");
-
-const path = require("path");
+const { pickWinner } = require("./src/scorer");
 
 const app = express();
 app.use(cors());
@@ -16,14 +16,24 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 
-// roomId -> { players: [socketId, ...], frames: { socketId: frameData } }
+// roomId -> { players: [socketId, ...], frames: { socketId: base64 } }
 const rooms = {};
 
 const PROMPT = "Make your best surprised face! 😲";
 
-// Mock scorer: returns a random score 0–100
-function mockScore() {
-  return Math.floor(Math.random() * 101);
+function startCountdown(roomId) {
+  let count = 3;
+  io.to(roomId).emit("countdown", { count });
+
+  const timer = setInterval(() => {
+    count--;
+    if (count > 0) {
+      io.to(roomId).emit("countdown", { count });
+    } else {
+      clearInterval(timer);
+      io.to(roomId).emit("take_photo");
+    }
+  }, 1000);
 }
 
 io.on("connection", (socket) => {
@@ -39,7 +49,6 @@ io.on("connection", (socket) => {
 
     const room = rooms[roomId];
 
-    // Reject a third player
     if (room.players.length >= 2) {
       socket.emit("error", { message: "Room is full." });
       return;
@@ -51,25 +60,16 @@ io.on("connection", (socket) => {
 
     console.log(`[join_room] ${socket.id} → room "${roomId}" (${room.players.length}/2)`);
 
-    // Both players present → start the game
     if (room.players.length === 2) {
-      // game_start
-      io.to(roomId).emit("game_start", {
-        roomId,
-        players: room.players,
-      });
-
-      // prompt_ready — sent immediately after game_start
-      io.to(roomId).emit("prompt_ready", {
-        prompt: PROMPT,
-      });
-
-      console.log(`[game_start + prompt_ready] room "${roomId}"`);
+      io.to(roomId).emit("game_start", { roomId, players: room.players });
+      io.to(roomId).emit("prompt_ready", { prompt: PROMPT });
+      startCountdown(roomId);
+      console.log(`[game_start] room "${roomId}" — countdown started`);
     }
   });
 
   // ── submit_frame ───────────────────────────────────────────────────────────
-  socket.on("submit_frame", ({ frame }) => {
+  socket.on("submit_frame", async ({ frame }) => {
     const roomId = socket.data.roomId;
     if (!roomId || !rooms[roomId]) return;
 
@@ -80,35 +80,27 @@ io.on("connection", (socket) => {
       `[submit_frame] ${socket.id} — frames received: ${Object.keys(room.frames).length}/2`
     );
 
-    // Both frames in → score and end game
     if (Object.keys(room.frames).length === 2) {
-      const scores = {};
-      room.players.forEach((pid) => {
-        scores[pid] = mockScore();
-      });
-
-      // Emit individual score_result to each player
-      room.players.forEach((pid) => {
-        io.to(pid).emit("score_result", {
-          playerId: pid,
-          score: scores[pid],
-        });
-      });
-
-      // Determine winner (ties go to first player)
       const [p1, p2] = room.players;
-      const winner = scores[p1] >= scores[p2] ? p1 : p2;
 
-      io.to(roomId).emit("game_over", {
-        winner,
-        scores,
-      });
+      io.to(roomId).emit("judging");
 
-      console.log(
-        `[game_over] room "${roomId}" — winner: ${winner} | scores: ${JSON.stringify(scores)}`
-      );
+      try {
+        const { winner: winnerIndex } = await pickWinner(
+          room.frames[p1],
+          room.frames[p2],
+          PROMPT
+        );
+        const winner = winnerIndex === 1 ? p1 : p2;
+        console.log(`[game_over] room "${roomId}" — winner: ${winner}`);
+        io.to(roomId).emit("game_over", { winner });
+      } catch (err) {
+        console.error("[pickWinner] error:", err);
+        // fallback: random winner
+        const winner = room.players[Math.floor(Math.random() * 2)];
+        io.to(roomId).emit("game_over", { winner });
+      }
 
-      // Clean up room so it can be reused
       delete rooms[roomId];
     }
   });
@@ -126,7 +118,6 @@ io.on("connection", (socket) => {
     if (room.players.length === 0) {
       delete rooms[roomId];
     } else {
-      // Notify remaining player
       io.to(roomId).emit("player_left", { playerId: socket.id });
     }
   });

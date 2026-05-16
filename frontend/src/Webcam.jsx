@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = 'http://localhost:5000';
+const SOCKET_URL = 'http://localhost:3001';
 
 // Exposes socket ref so GameUI (Lam) can attach game-event listeners to the same socket.
 export default function Webcam({ roomId, socketRef: externalSocketRef }) {
@@ -32,7 +32,7 @@ export default function Webcam({ roomId, socketRef: externalSocketRef }) {
     if (externalSocketRef) return; // GameUI owns the socket
     const socket = io(SOCKET_URL);
     internalSocketRef.current = socket;
-    socket.emit('join_room', { room: roomId });
+    socket.emit('join_room', { roomId });
     return () => socket.disconnect();
   }, [roomId, externalSocketRef]);
 
@@ -50,7 +50,7 @@ export default function Webcam({ roomId, socketRef: externalSocketRef }) {
     console.log('Captured base64 JPEG:', base64);
 
     if (socketRef.current) {
-      socketRef.current.emit('submit_frame', { room: roomId, frame: base64 });
+      socketRef.current.emit('submit_frame', { frame: base64 });
     }
   }
 
