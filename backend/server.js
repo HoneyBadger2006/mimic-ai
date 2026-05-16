@@ -7,7 +7,7 @@ const { pickWinner } = require("./src/scorer");
 
 const app = express();
 app.use(cors());
-app.use(express.static(path.join(__dirname, "../frontend")));
+app.use(express.static(path.join(__dirname, "../frontend/dist")));
 
 const server = http.createServer(app);
 const io = new Server(server, {
