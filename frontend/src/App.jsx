@@ -8,28 +8,26 @@ const SOCKET_URL = import.meta.env.DEV
 const socket = io(SOCKET_URL)
 
 const PHASE = {
-  JOINING: 'joining',
-  WAITING: 'waiting',
-  PROMPT: 'prompt',
-  JUDGING: 'judging',
-  RESULTS: 'results',
+  JOINING:  'joining',
+  WAITING:  'waiting',
+  PROMPT:   'prompt',
+  JUDGING:  'judging',
+  RESULTS:  'results',
 }
 
 export default function App() {
-  const [phase, setPhase] = useState(PHASE.JOINING)
-  const [roomId, setRoomId] = useState('')
-  const [prompt, setPrompt] = useState('')
+  const [phase, setPhase]       = useState(PHASE.JOINING)
+  const [roomId, setRoomId]     = useState('')
+  const [prompt, setPrompt]     = useState('')
   const [countdown, setCountdown] = useState(null)
-  const [winner, setWinner] = useState('')
-  const [isMe, setIsMe] = useState(false)
-  const [error, setError] = useState('')
-  const videoRef = useRef(null)
+  const [winner, setWinner]     = useState('')
+  const [isMe, setIsMe]         = useState(false)
+  const [error, setError]       = useState('')
+  const videoRef  = useRef(null)
   const streamRef = useRef(null)
 
   useEffect(() => {
-    socket.on('game_start', () => {
-      setError('')
-    })
+    socket.on('game_start', () => { setError('') })
 
     socket.on('prompt_ready', ({ prompt: p }) => {
       setPrompt(p)
@@ -37,13 +35,9 @@ export default function App() {
       startWebcam()
     })
 
-    socket.on('countdown', ({ count }) => {
-      setCountdown(count)
-    })
+    socket.on('countdown', ({ count }) => { setCountdown(count) })
 
-    socket.on('take_photo', () => {
-      captureAndSubmit()
-    })
+    socket.on('take_photo', () => { captureAndSubmit() })
 
     socket.on('judging', () => {
       setPhase(PHASE.JUDGING)
@@ -52,12 +46,11 @@ export default function App() {
 
     socket.on('game_over', ({ winner: winnerId }) => {
       setIsMe(winnerId === socket.id)
-      setWinner(winnerId === socket.id ? 'You win!' : 'Opponent wins!')
+      setWinner(winnerId === socket.id ? 'win' : 'lose')
       setPhase(PHASE.RESULTS)
     })
 
-    socket.on('error', ({ message }) => setError(message))
-
+    socket.on('error',       ({ message }) => setError(message))
     socket.on('player_left', () => {
       setError('Opponent disconnected.')
       setPhase(PHASE.WAITING)
@@ -65,14 +58,10 @@ export default function App() {
     })
 
     return () => {
-      socket.off('game_start')
-      socket.off('prompt_ready')
-      socket.off('countdown')
-      socket.off('take_photo')
-      socket.off('judging')
-      socket.off('game_over')
-      socket.off('error')
-      socket.off('player_left')
+      socket.off('game_start'); socket.off('prompt_ready')
+      socket.off('countdown');  socket.off('take_photo')
+      socket.off('judging');    socket.off('game_over')
+      socket.off('error');      socket.off('player_left')
     }
   }, [])
 
@@ -91,16 +80,15 @@ export default function App() {
   }
 
   function captureAndSubmit() {
-    const video = videoRef.current
+    const video  = videoRef.current
     const canvas = document.createElement('canvas')
     if (video && video.videoWidth) {
-      canvas.width = video.videoWidth
+      canvas.width  = video.videoWidth
       canvas.height = video.videoHeight
       canvas.getContext('2d').drawImage(video, 0, 0)
     }
-    // strip the data URI prefix — scorer expects raw base64
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
-    const base64 = dataUrl.replace(/^data:image\/jpeg;base64,/, '')
+    const base64 = canvas.toDataURL('image/jpeg', 0.85)
+      .replace(/^data:image\/jpeg;base64,/, '')
     socket.emit('submit_frame', { frame: base64 })
   }
 
@@ -120,208 +108,425 @@ export default function App() {
     setError('')
   }
 
+  const showWebcam = phase === PHASE.PROMPT || phase === PHASE.JUDGING
+
   return (
-    <div style={s.root}>
-      {error && <p style={s.errorBanner}>{error}</p>}
+    <HudViewport>
+      {/* Error banner */}
+      {error && (
+        <div style={{
+          position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 99, padding: '8px 20px',
+          background: 'rgba(239,68,68,0.15)',
+          border: '1px solid rgba(239,68,68,0.5)',
+          borderRadius: 4, color: '#fca5a5',
+          fontFamily: "'Rajdhani', sans-serif",
+          fontSize: 13, fontWeight: 600,
+          letterSpacing: '0.16em', textTransform: 'uppercase',
+        }}>{error}</div>
+      )}
 
-      {/* Live webcam — bottom-right during prompt phase */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{ ...s.webcam, display: phase === PHASE.PROMPT ? 'block' : 'none' }}
-      />
+      {/* ── JOINING — lobby ─────────────────────────────────────────── */}
+      {phase === PHASE.JOINING && (
+        <div style={{
+          minHeight: '100vh', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 40, padding: '0 24px',
+          background: 'radial-gradient(60% 50% at 50% 35%, rgba(34,211,238,0.10), transparent 70%)',
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <Wordmark />
+            <Subtitle>AI · Face · Battle</Subtitle>
+          </div>
 
-      {/* Countdown overlay — appears over everything when server fires countdown */}
-      {phase === PHASE.PROMPT && countdown !== null && (
-        <div style={s.countdownOverlay}>
-          <div style={{ ...s.countdown, ...(countdown <= 1 ? s.countdownUrgent : {}) }}>
-            {countdown}
+          <StatusTag>Local · 1v1</StatusTag>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
+            <input
+              value={roomId}
+              onChange={e => setRoomId(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleJoin()}
+              placeholder="ENTER ROOM ID"
+              autoFocus
+              style={{
+                padding: '14px 24px',
+                background: 'transparent',
+                border: '2px solid rgba(34,211,238,0.45)',
+                borderRadius: 8,
+                color: '#fff',
+                fontFamily: "'Rajdhani', sans-serif",
+                fontSize: 18, fontWeight: 600,
+                letterSpacing: '0.20em', textTransform: 'uppercase',
+                textAlign: 'center', outline: 'none', width: 280,
+              }}
+            />
+            <OutlineButton color="cyan" onClick={handleJoin}>Join Game</OutlineButton>
           </div>
         </div>
       )}
 
-      <div style={s.card}>
-        {phase === PHASE.JOINING && (
-          <>
-            <h1 style={s.title}>Mimic-AI</h1>
-            <input
-              style={s.input}
-              value={roomId}
-              onChange={e => setRoomId(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleJoin()}
-              placeholder="Enter room ID"
-              autoFocus
+      {/* ── WAITING — holding for second player ─────────────────────── */}
+      {phase === PHASE.WAITING && (
+        <div style={{
+          minHeight: '100vh', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 28,
+        }}>
+          <PulsingDots />
+          <Eyebrow color="cyan">Waiting for opponent</Eyebrow>
+          <StatusTag>Room: {roomId}</StatusTag>
+        </div>
+      )}
+
+      {/* ── PROMPT + JUDGING — two-column play surface ──────────────── */}
+      {showWebcam && (
+        <div style={{
+          minHeight: '100vh',
+          padding: '70px 64px 56px',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(300px, 1fr) minmax(380px, 1fr)',
+          gap: 64, alignItems: 'center',
+        }}>
+          {/* LEFT — webcam viewfinder */}
+          <BracketFrame color="cyan" label="Your Scan" style={{ aspectRatio: '3 / 4', width: '100%' }}>
+            {/* Live video */}
+            <video
+              ref={videoRef}
+              autoPlay playsInline muted
+              style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                objectFit: 'cover',
+                display: phase === PHASE.PROMPT ? 'block' : 'none',
+              }}
             />
-            <button style={s.btn} onClick={handleJoin}>Join Game</button>
-          </>
-        )}
+            {/* Dark base (shown when video off) */}
+            {phase === PHASE.JUDGING && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: 'radial-gradient(80% 70% at 50% 40%, rgba(34,211,238,0.07), transparent 70%), #050810',
+              }} />
+            )}
+            {/* Scanlines */}
+            <div style={{
+              position: 'absolute', inset: 0, pointerEvents: 'none',
+              backgroundImage: 'repeating-linear-gradient(to bottom, rgba(255,255,255,0.04) 0, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 4px)',
+            }} />
+            {/* REC dot */}
+            {phase === PHASE.PROMPT && (
+              <div style={{
+                position: 'absolute', top: 42, right: 18,
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontFamily: "'Rajdhani', sans-serif",
+                fontSize: 11, fontWeight: 600,
+                color: '#fca5a5', letterSpacing: '0.20em', textTransform: 'uppercase',
+              }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: 4,
+                  background: '#ef4444', boxShadow: '0 0 8px rgba(239,68,68,0.7)',
+                  animation: 'mimic-blink 1.2s ease-in-out infinite',
+                }} />
+                Rec
+              </div>
+            )}
+            {/* Scanning overlay */}
+            {phase === PHASE.JUDGING && (
+              <>
+                <div style={{
+                  position: 'absolute', left: 0, right: 0, height: 2,
+                  background: 'linear-gradient(90deg, transparent, #22d3ee, transparent)',
+                  boxShadow: '0 0 14px rgba(34,211,238,0.7)',
+                  animation: 'mimic-scan 1.6s linear infinite',
+                }} />
+                <div style={{
+                  position: 'absolute', bottom: 22, left: 0, right: 0,
+                  textAlign: 'center', color: '#22d3ee',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  fontSize: 13, fontWeight: 600,
+                  letterSpacing: '0.30em', textTransform: 'uppercase',
+                }}>Analyzing…</div>
+              </>
+            )}
+          </BracketFrame>
 
-        {phase === PHASE.WAITING && (
-          <>
-            <div style={s.spinner} />
-            <h2 style={s.heading}>Waiting for opponent…</h2>
-            <p style={s.sub}>Room: <strong>{roomId}</strong></p>
-          </>
-        )}
+          {/* RIGHT — HUD column */}
+          <div style={{
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', gap: 36, textAlign: 'center',
+          }}>
+            {phase === PHASE.PROMPT && (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
+                  <Eyebrow color="cyan">Challenge</Eyebrow>
+                  <PromptText>{prompt}</PromptText>
+                </div>
+                {countdown !== null
+                  ? <CountdownRing seconds={countdown} />
+                  : <Eyebrow color="cyan">Strike your pose</Eyebrow>
+                }
+              </>
+            )}
 
-        {phase === PHASE.PROMPT && (
-          <>
-            <p style={s.label}>YOUR CHALLENGE</p>
-            <h1 style={s.promptText}>{prompt}</h1>
-            {countdown === null
-              ? <p style={s.poseHint}>Strike your pose!</p>
-              : <p style={s.sub}>Photo captures in…</p>
-            }
-          </>
-        )}
+            {phase === PHASE.JUDGING && (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'center' }}>
+                  <Eyebrow color="cyan">Hold steady</Eyebrow>
+                  <PromptText>{prompt}</PromptText>
+                </div>
+                <PulsingDots />
+                <Eyebrow color="cyan">AI is grading your face</Eyebrow>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
-        {phase === PHASE.JUDGING && (
-          <>
-            <div style={s.spinner} />
-            <h2 style={s.heading}>AI is judging…</h2>
-          </>
-        )}
+      {/* Countdown fullscreen overlay */}
+      {phase === PHASE.PROMPT && countdown !== null && countdown <= 3 && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none', zIndex: 50,
+        }}>
+          <CountdownRing seconds={countdown} large />
+        </div>
+      )}
 
-        {phase === PHASE.RESULTS && (
-          <>
-            <h1 style={{ ...s.promptText, color: isMe ? '#f9e04b' : '#fff' }}>{winner}</h1>
-            <button style={s.btn} onClick={handlePlayAgain}>Play Again</button>
-          </>
-        )}
-      </div>
+      {/* ── RESULTS — verdict ───────────────────────────────────────── */}
+      {phase === PHASE.RESULTS && (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 40, padding: '0 32px',
+          background: isMe
+            ? 'radial-gradient(60% 50% at 50% 50%, rgba(34,211,238,0.18), transparent 70%)'
+            : 'radial-gradient(60% 50% at 50% 50%, rgba(239,68,68,0.18), transparent 70%)',
+        }}>
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <Eyebrow color={isMe ? 'cyan' : 'red'}>You</Eyebrow>
+            <VerdictText outcome={winner}>{winner.toUpperCase()}</VerdictText>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 360 }}>
+            <OutlineButton color="cyan"    fullWidth onClick={handlePlayAgain}>Play Again</OutlineButton>
+            <OutlineButton color="neutral" fullWidth onClick={() => { setPhase(PHASE.JOINING); setError('') }}>
+              Return to Menu
+            </OutlineButton>
+          </div>
+        </div>
+      )}
+    </HudViewport>
+  )
+}
+
+// ── HUD primitives ────────────────────────────────────────────────────────────
+
+function HudViewport({ children }) {
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#000', color: '#fff',
+      fontFamily: "'Rajdhani', system-ui, sans-serif",
+      position: 'relative', overflow: 'hidden',
+    }}>
+      <ViewportCorners />
+      {children}
     </div>
   )
 }
 
-const s = {
-  root: {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)',
-    fontFamily: "'Segoe UI', sans-serif",
-    color: '#fff',
-    padding: '1rem',
-  },
-  card: {
-    background: 'rgba(255,255,255,0.07)',
-    backdropFilter: 'blur(12px)',
-    borderRadius: '1.5rem',
-    padding: '3rem 2.5rem',
-    textAlign: 'center',
-    maxWidth: 520,
-    width: '100%',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '1.5rem',
-  },
-  title: { fontSize: '3rem', fontWeight: 800, margin: 0, letterSpacing: '-1px' },
-  heading: { fontSize: '1.6rem', fontWeight: 700, margin: 0 },
-  sub: { fontSize: '1rem', color: 'rgba(255,255,255,0.55)', margin: 0 },
-  label: {
-    fontSize: '0.85rem',
-    textTransform: 'uppercase',
-    letterSpacing: '0.12em',
-    color: 'rgba(255,255,255,0.5)',
-    margin: 0,
-  },
-  promptText: {
-    fontSize: 'clamp(2rem, 5vw, 3rem)',
-    fontWeight: 900,
-    lineHeight: 1.1,
-    margin: 0,
-    color: '#f9e04b',
-    textShadow: '0 0 20px rgba(249,224,75,0.5)',
-  },
-  countdown: {
-    fontSize: '6rem',
-    fontWeight: 900,
-    lineHeight: 1,
-    color: '#fff',
-    transition: 'color 0.3s, transform 0.3s',
-  },
-  countdownUrgent: {
-    color: '#ff4d4d',
-    transform: 'scale(1.2)',
-    textShadow: '0 0 24px rgba(255,77,77,0.7)',
-  },
-  input: {
-    padding: '0.75rem 1.25rem',
-    fontSize: '1.1rem',
-    borderRadius: '999px',
-    border: '2px solid rgba(255,255,255,0.25)',
-    background: 'rgba(255,255,255,0.08)',
-    color: '#fff',
-    outline: 'none',
-    width: 260,
-    textAlign: 'center',
-  },
-  btn: {
-    padding: '0.85rem 2.5rem',
-    fontSize: '1.1rem',
-    fontWeight: 700,
-    borderRadius: '999px',
-    border: 'none',
-    background: 'linear-gradient(90deg, #f9e04b, #f7971e)',
-    color: '#111',
-    cursor: 'pointer',
-    letterSpacing: '0.04em',
-  },
-  spinner: {
-    width: 64,
-    height: 64,
-    borderRadius: '50%',
-    border: '6px solid rgba(255,255,255,0.15)',
-    borderTopColor: '#f9e04b',
-    animation: 'spin 0.9s linear infinite',
-  },
-  countdownOverlay: {
-    position: 'fixed',
-    inset: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'rgba(0,0,0,0.55)',
-    zIndex: 50,
-    pointerEvents: 'none',
-  },
-  poseHint: {
-    fontSize: '1.3rem',
-    fontWeight: 700,
-    color: '#f9e04b',
-    margin: 0,
-    animation: 'pulse 1s ease-in-out infinite',
-  },
-  errorBanner: {
-    position: 'fixed',
-    top: 16,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    color: '#ff4d4d',
-    background: '#1a1a2e',
-    padding: '0.5rem 1.25rem',
-    borderRadius: 8,
-    margin: 0,
-    zIndex: 99,
-  },
-  webcam: {
-    position: 'fixed',
-    bottom: 16,
-    right: 16,
-    width: 200,
-    borderRadius: 12,
-    border: '2px solid rgba(255,255,255,0.2)',
-    zIndex: 10,
-  },
+function ViewportCorners() {
+  const arm = { position: 'absolute', width: 28, height: 28, borderColor: 'rgba(255,255,255,0.15)', borderStyle: 'solid', pointerEvents: 'none' }
+  return (
+    <>
+      <div style={{ ...arm, top: 22,    left: 22,  borderWidth: '2px 0 0 2px' }} />
+      <div style={{ ...arm, top: 22,    right: 22, borderWidth: '2px 2px 0 0' }} />
+      <div style={{ ...arm, bottom: 22, left: 22,  borderWidth: '0 0 2px 2px' }} />
+      <div style={{ ...arm, bottom: 22, right: 22, borderWidth: '0 2px 2px 0' }} />
+    </>
+  )
 }
 
-// spinner keyframe
-const tag = document.createElement('style')
-tag.textContent = '@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }'
-document.head.appendChild(tag)
+function BracketFrame({ color = 'cyan', children, label, style }) {
+  const stroke     = color === 'red' ? '#ef4444' : '#22d3ee'
+  const labelColor = color === 'red' ? '#fca5a5' : '#67e8f9'
+  const arm = { position: 'absolute', width: 28, height: 28, borderColor: stroke, borderStyle: 'solid', pointerEvents: 'none' }
+  return (
+    <div style={{
+      position: 'relative',
+      background: 'linear-gradient(180deg, #05070d, #000)',
+      border: '1px solid rgba(255,255,255,0.04)',
+      overflow: 'hidden',
+      ...style,
+    }}>
+      <div style={{ ...arm, top: 0,    left: 0,    borderWidth: '2px 0 0 2px' }} />
+      <div style={{ ...arm, top: 0,    right: 0,   borderWidth: '2px 2px 0 0' }} />
+      <div style={{ ...arm, bottom: 0, left: 0,    borderWidth: '0 0 2px 2px' }} />
+      <div style={{ ...arm, bottom: 0, right: 0,   borderWidth: '0 2px 2px 0' }} />
+      {label && (
+        <div style={{
+          position: 'absolute', top: 14, left: 18, zIndex: 2,
+          fontFamily: "'Rajdhani', sans-serif",
+          fontSize: 11, fontWeight: 600,
+          letterSpacing: '0.20em', textTransform: 'uppercase',
+          color: labelColor, whiteSpace: 'nowrap',
+        }}>{label}</div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+function Wordmark() {
+  return (
+    <div style={{
+      fontFamily: "'Orbitron', sans-serif",
+      fontWeight: 900,
+      fontSize: 'clamp(64px, 10vw, 120px)',
+      letterSpacing: '0.06em', lineHeight: 0.95,
+      textTransform: 'uppercase',
+      backgroundImage: `
+        repeating-linear-gradient(to bottom, rgba(255,255,255,0.95) 0px, rgba(255,255,255,0.95) 3px, transparent 3px, transparent 7px),
+        linear-gradient(180deg, #a5f3fc 0%, #22d3ee 100%)
+      `,
+      WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+      filter: 'drop-shadow(0 0 24px rgba(34,211,238,0.35))',
+    }}>MIMIC</div>
+  )
+}
+
+function Subtitle({ children }) {
+  return (
+    <div style={{
+      fontFamily: "'Rajdhani', sans-serif",
+      fontSize: 14, fontWeight: 500,
+      letterSpacing: '0.40em', textTransform: 'uppercase',
+      color: 'rgba(34,211,238,0.50)', marginTop: 8,
+    }}>{children}</div>
+  )
+}
+
+function Eyebrow({ color = 'cyan', children }) {
+  const colors = { cyan: '#22d3ee', red: '#ef4444', mute: 'rgba(255,255,255,0.45)' }
+  return (
+    <div style={{
+      fontFamily: "'Rajdhani', sans-serif",
+      fontSize: 13, fontWeight: 600,
+      textTransform: 'uppercase', letterSpacing: '0.30em',
+      color: colors[color] ?? colors.cyan,
+    }}>{children}</div>
+  )
+}
+
+function PromptText({ children }) {
+  return (
+    <div style={{
+      fontFamily: "'Orbitron', sans-serif",
+      fontWeight: 900, fontSize: 'clamp(28px, 3.5vw, 52px)',
+      lineHeight: 1.05, letterSpacing: '0.02em',
+      textTransform: 'uppercase', color: '#fff',
+      textShadow: '0 0 24px rgba(255,255,255,0.18)',
+      textAlign: 'center',
+    }}>{children}</div>
+  )
+}
+
+function VerdictText({ outcome, children }) {
+  const styles = {
+    win:  { color: '#22d3ee', textShadow: '0 0 36px rgba(34,211,238,0.65), 0 0 8px rgba(34,211,238,0.45)' },
+    lose: { color: '#ef4444', textShadow: '0 0 36px rgba(239,68,68,0.65),  0 0 8px rgba(239,68,68,0.45)'  },
+    tie:  { color: 'rgba(255,255,255,0.85)', textShadow: '0 0 24px rgba(255,255,255,0.20)' },
+  }
+  return (
+    <div style={{
+      fontFamily: "'Orbitron', sans-serif",
+      fontWeight: 900, fontSize: 'clamp(72px, 12vw, 104px)',
+      letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.0,
+      ...(styles[outcome] ?? styles.lose),
+    }}>{children}</div>
+  )
+}
+
+function CountdownRing({ seconds, large = false }) {
+  const urgent = seconds <= 2
+  const size   = large ? 220 : 140
+  const fs     = large ? 110 : 72
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      border: `3px solid ${urgent ? '#ef4444' : 'rgba(34,211,238,0.55)'}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: urgent ? '0 0 24px rgba(239,68,68,0.55)' : 'none',
+      transition: 'border-color 0.2s, box-shadow 0.2s',
+    }}>
+      <div style={{
+        fontFamily: "'Orbitron', sans-serif",
+        fontWeight: 900, fontSize: fs, lineHeight: 1,
+        color: urgent ? '#ef4444' : '#fff',
+        transition: 'color 0.2s',
+      }}>{seconds}</div>
+    </div>
+  )
+}
+
+function PulsingDots() {
+  return (
+    <div style={{ display: 'flex', gap: 10 }}>
+      {[0, 1, 2, 3].map(i => (
+        <span key={i} style={{
+          width: 10, height: 10, borderRadius: '50%',
+          background: '#22d3ee', boxShadow: '0 0 12px rgba(34,211,238,0.7)',
+          animation: `mimic-pulse-dot 1.2s ease-in-out ${i * 0.15}s infinite`,
+          display: 'inline-block',
+        }} />
+      ))}
+    </div>
+  )
+}
+
+function StatusTag({ children }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      padding: '6px 14px',
+      fontFamily: "'Rajdhani', sans-serif",
+      fontSize: 11, fontWeight: 600,
+      letterSpacing: '0.20em', textTransform: 'uppercase',
+      color: '#67e8f9', border: '1px solid rgba(34,211,238,0.45)',
+      borderRadius: 999, background: 'transparent', whiteSpace: 'nowrap',
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: 4, background: '#22d3ee', boxShadow: '0 0 8px rgba(34,211,238,0.7)' }} />
+      {children}
+    </span>
+  )
+}
+
+function OutlineButton({ color = 'cyan', onClick, children, fullWidth = false }) {
+  const palettes = {
+    cyan:    { c: '#22d3ee', bg: 'rgba(34,211,238,0.10)', glow: '0 0 16px rgba(34,211,238,0.45)' },
+    red:     { c: '#ef4444', bg: 'rgba(239,68,68,0.10)',  glow: '0 0 16px rgba(239,68,68,0.45)'  },
+    neutral: { c: 'rgba(255,255,255,0.78)', bg: 'rgba(255,255,255,0.05)', glow: 'none' },
+  }
+  const p = palettes[color]
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: '16px 32px',
+        background: hover ? p.bg : 'transparent',
+        border: `2px solid ${p.c}`,
+        borderRadius: 8, color: p.c,
+        fontFamily: "'Rajdhani', sans-serif",
+        fontSize: 18, fontWeight: 700,
+        textTransform: 'uppercase', letterSpacing: '0.16em',
+        cursor: 'pointer',
+        boxShadow: hover ? p.glow : 'none',
+        transition: 'background 0.15s, box-shadow 0.15s',
+        width: fullWidth ? '100%' : 'auto',
+        minWidth: fullWidth ? 'auto' : 240,
+      }}>
+      {children}
+    </button>
+  )
+}
