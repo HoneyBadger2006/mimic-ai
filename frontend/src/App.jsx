@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
 
-const socket = io('http://localhost:3001')
+const socket = io(`http://${window.location.hostname}:3001`)
 
 const PHASE = {
   JOINING: 'joining',
@@ -129,6 +129,15 @@ export default function App() {
         style={{ ...s.webcam, display: phase === PHASE.PROMPT ? 'block' : 'none' }}
       />
 
+      {/* Countdown overlay — appears over everything when server fires countdown */}
+      {phase === PHASE.PROMPT && countdown !== null && (
+        <div style={s.countdownOverlay}>
+          <div style={{ ...s.countdown, ...(countdown <= 1 ? s.countdownUrgent : {}) }}>
+            {countdown}
+          </div>
+        </div>
+      )}
+
       <div style={s.card}>
         {phase === PHASE.JOINING && (
           <>
@@ -157,12 +166,10 @@ export default function App() {
           <>
             <p style={s.label}>YOUR CHALLENGE</p>
             <h1 style={s.promptText}>{prompt}</h1>
-            {countdown !== null && (
-              <div style={{ ...s.countdown, ...(countdown <= 1 ? s.countdownUrgent : {}) }}>
-                {countdown}
-              </div>
-            )}
-            <p style={s.sub}>Get ready — photo auto-captures!</p>
+            {countdown === null
+              ? <p style={s.poseHint}>Strike your pose!</p>
+              : <p style={s.sub}>Photo captures in…</p>
+            }
           </>
         )}
 
@@ -270,6 +277,23 @@ const s = {
     borderTopColor: '#f9e04b',
     animation: 'spin 0.9s linear infinite',
   },
+  countdownOverlay: {
+    position: 'fixed',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'rgba(0,0,0,0.55)',
+    zIndex: 50,
+    pointerEvents: 'none',
+  },
+  poseHint: {
+    fontSize: '1.3rem',
+    fontWeight: 700,
+    color: '#f9e04b',
+    margin: 0,
+    animation: 'pulse 1s ease-in-out infinite',
+  },
   errorBanner: {
     position: 'fixed',
     top: 16,
@@ -295,5 +319,5 @@ const s = {
 
 // spinner keyframe
 const tag = document.createElement('style')
-tag.textContent = '@keyframes spin { to { transform: rotate(360deg); } }'
+tag.textContent = '@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }'
 document.head.appendChild(tag)

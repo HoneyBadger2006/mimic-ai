@@ -63,8 +63,9 @@ io.on("connection", (socket) => {
     if (room.players.length === 2) {
       io.to(roomId).emit("game_start", { roomId, players: room.players });
       io.to(roomId).emit("prompt_ready", { prompt: PROMPT });
-      startCountdown(roomId);
-      console.log(`[game_start] room "${roomId}" — countdown started`);
+      // 3s pose window, then 3s countdown
+      setTimeout(() => startCountdown(roomId), 3000);
+      console.log(`[game_start] room "${roomId}" — pose window started`);
     }
   });
 
