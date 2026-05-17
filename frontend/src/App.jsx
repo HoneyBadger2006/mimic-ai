@@ -25,6 +25,7 @@ export default function App() {
   const [myScore, setMyScore]   = useState(null)
   const [oppScore, setOppScore] = useState(null)
   const [error, setError]       = useState('')
+  const [myPhoto, setMyPhoto]   = useState(null)
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
 
@@ -105,6 +106,7 @@ export default function App() {
       canvas.getContext('2d').drawImage(video, 0, 0)
     }
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    setMyPhoto(dataUrl)
     const base64  = dataUrl.replace(/^data:image\/\w+;base64,/, '')
     if (!base64) {
       setError('Camera capture failed — check permissions and try again.')
@@ -128,6 +130,7 @@ export default function App() {
     setWinner('')
     setMyScore(null)
     setOppScore(null)
+    setMyPhoto(null)
     setError('')
   }
 
@@ -333,6 +336,24 @@ export default function App() {
             <ScoreCard label="You" score={myScore} highlight={isMe} />
             <ScoreCard label="Opponent" score={oppScore} highlight={!isMe} />
           </div>
+
+          {myPhoto && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                fontSize: 11, letterSpacing: '0.20em', textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.35)', fontFamily: "'Rajdhani', sans-serif",
+              }}>Your Photo</div>
+              <img
+                src={myPhoto}
+                alt="Your captured face"
+                style={{
+                  width: 220, borderRadius: 12,
+                  border: `2px solid ${isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`,
+                  transform: 'scaleX(-1)',
+                }}
+              />
+            </div>
+          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 360 }}>
             <OutlineButton color="cyan"    fullWidth onClick={handlePlayAgain}>Play Again</OutlineButton>
