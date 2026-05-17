@@ -26,6 +26,8 @@ export default function App() {
   const [oppScore, setOppScore] = useState(null)
   const [error, setError]       = useState('')
   const [myPhoto, setMyPhoto]   = useState(null)
+  const [oppPhoto, setOppPhoto] = useState(null)
+  const [tip, setTip]           = useState(null)
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
 
@@ -51,12 +53,14 @@ export default function App() {
       stopWebcam()
     })
 
-    socket.on('game_over', ({ winner: winnerId, yourScore, oppScore, scoredBy, error }) => {
+    socket.on('game_over', ({ winner: winnerId, yourScore, oppScore, oppPhoto: oppPhotoData, tip: tipData, scoredBy, error }) => {
       const won = winnerId === socket.id
       setIsMe(won)
       setWinner(won ? 'win' : 'lose')
       setMyScore(yourScore ?? null)
       setOppScore(oppScore ?? null)
+      setOppPhoto(oppPhotoData ?? null)
+      setTip(tipData ?? null)
       setPhase(PHASE.RESULTS)
       if (scoredBy === 'random') {
         console.warn('[DEBUG] Bedrock scoring failed, random winner picked. Error:', error)
@@ -131,6 +135,8 @@ export default function App() {
     setMyScore(null)
     setOppScore(null)
     setMyPhoto(null)
+    setOppPhoto(null)
+    setTip(null)
     setError('')
   }
 
@@ -337,21 +343,43 @@ export default function App() {
             <ScoreCard label="Opponent" score={oppScore} highlight={!isMe} />
           </div>
 
-          {myPhoto && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                fontSize: 11, letterSpacing: '0.20em', textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.35)', fontFamily: "'Rajdhani', sans-serif",
-              }}>Your Photo</div>
-              <img
-                src={myPhoto}
-                alt="Your captured face"
-                style={{
-                  width: 220, borderRadius: 12,
-                  border: `2px solid ${isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`,
-                  transform: 'scaleX(-1)',
-                }}
-              />
+          {/* Prompt used */}
+          {prompt && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, letterSpacing: '0.20em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', fontFamily: "'Rajdhani', sans-serif", marginBottom: 6 }}>Challenge</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '0.06em' }}>{prompt}</div>
+            </div>
+          )}
+
+          {/* Side-by-side photos */}
+          {(myPhoto || oppPhoto) && (
+            <div style={{ display: 'flex', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
+              {myPhoto && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 10, letterSpacing: '0.20em', textTransform: 'uppercase', color: isMe ? '#22d3ee' : 'rgba(255,255,255,0.35)', fontFamily: "'Rajdhani', sans-serif" }}>You</div>
+                  <img src={myPhoto} alt="Your face" style={{ width: 180, borderRadius: 10, border: `2px solid ${isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`, transform: 'scaleX(-1)' }} />
+                </div>
+              )}
+              {oppPhoto && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 10, letterSpacing: '0.20em', textTransform: 'uppercase', color: !isMe ? '#22d3ee' : 'rgba(255,255,255,0.35)', fontFamily: "'Rajdhani', sans-serif" }}>Opponent</div>
+                  <img src={oppPhoto} alt="Opponent face" style={{ width: 180, borderRadius: 10, border: `2px solid ${!isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`, transform: 'scaleX(-1)' }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* AI tip */}
+          {tip && (
+            <div style={{
+              maxWidth: 420, padding: '16px 22px',
+              border: '1px solid rgba(250,204,21,0.35)',
+              borderRadius: 10,
+              background: 'rgba(250,204,21,0.06)',
+              display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#facc15', fontFamily: "'Rajdhani', sans-serif" }}>AI Tip — How to Improve</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.85)', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '0.04em', lineHeight: 1.5 }}>{tip}</div>
             </div>
           )}
 

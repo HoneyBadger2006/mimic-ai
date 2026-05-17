@@ -77,12 +77,12 @@ async function scoreImage(base64Image, prompt) {
  * @param {string} frame1 - Base64 JPEG for player 1 (no data URI prefix)
  * @param {string} frame2 - Base64 JPEG for player 2 (no data URI prefix)
  * @param {string} prompt - The expression challenge
- * @returns {Promise<{winner: 1|2, score1: number, score2: number}>}
+ * @returns {Promise<{winner: 1|2, score1: number, score2: number, tip1: string, tip2: string}>}
  */
 async function pickWinner(frame1, frame2, prompt) {
   const body = {
     anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 64,
+    max_tokens: 300,
     messages: [
       {
         role: "user",
@@ -100,8 +100,9 @@ async function pickWinner(frame1, frame2, prompt) {
             text:
               `You are judging a facial expression contest. The challenge was: "${prompt}". ` +
               `The first image is Player 1, the second image is Player 2. ` +
-              `Score each player 0-100 on how accurately they performed the challenge, then pick the winner. ` +
-              `Reply with ONLY valid JSON, no explanation: {"winner": 1 or 2, "score1": <0-100>, "score2": <0-100>}`,
+              `Score each player 0-100 on how accurately they performed the challenge, pick the winner, ` +
+              `and give each player one short specific tip (under 15 words) on how to improve next time. ` +
+              `Reply with ONLY valid JSON, no explanation: {"winner": 1 or 2, "score1": <0-100>, "score2": <0-100>, "tip1": "<tip for player 1>", "tip2": "<tip for player 2>"}`,
           },
         ],
       },
@@ -128,6 +129,8 @@ async function pickWinner(frame1, frame2, prompt) {
     winner: parsed.winner,
     score1: Math.round(Math.min(100, Math.max(0, parsed.score1 ?? 50))),
     score2: Math.round(Math.min(100, Math.max(0, parsed.score2 ?? 50))),
+    tip1: parsed.tip1 ?? null,
+    tip2: parsed.tip2 ?? null,
   };
 }
 

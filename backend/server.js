@@ -114,37 +114,39 @@ io.on("connection", (socket) => {
       const f1 = room.frames[p1];
       const f2 = room.frames[p2];
 
-      function emitGameOver(winner, s1, s2, scoredBy, error) {
+      const toDataUri = (b64) => b64 ? `data:image/jpeg;base64,${b64}` : null;
+
+      function emitGameOver(winner, s1, s2, scoredBy, tip1, tip2, error) {
         const p1Socket = io.sockets.sockets.get(p1);
         const p2Socket = io.sockets.sockets.get(p2);
-        const base = { winner, scoredBy, ...(error ? { error } : {}) };
-        p1Socket?.emit("game_over", { ...base, yourScore: s1, oppScore: s2 });
-        p2Socket?.emit("game_over", { ...base, yourScore: s2, oppScore: s1 });
+        const base = { winner, scoredBy, prompt: room.prompt ?? null, ...(error ? { error } : {}) };
+        p1Socket?.emit("game_over", { ...base, yourScore: s1, oppScore: s2, oppPhoto: toDataUri(f2), tip: tip1 });
+        p2Socket?.emit("game_over", { ...base, yourScore: s2, oppScore: s1, oppPhoto: toDataUri(f1), tip: tip2 });
       }
 
       if (!f1 || !f2) {
         console.error("[submit_frame] One or both frames are empty — skipping AI scoring");
         const s1 = Math.floor(Math.random() * 101);
         const s2 = Math.floor(Math.random() * 101);
-        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", "Empty frame data");
+        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", null, null, "Empty frame data");
         delete rooms[roomId];
         return;
       }
 
       try {
-        const { winner: winnerIndex, score1, score2 } = await pickWinner(
+        const { winner: winnerIndex, score1, score2, tip1, tip2 } = await pickWinner(
           f1, f2,
           room.prompt ?? "Make your best surprised face!"
         );
         const winner = winnerIndex === 1 ? p1 : p2;
         console.log(`[game_over] room "${roomId}" — winner: ${winner} | scores: p1=${score1} p2=${score2} (AI scored)`);
-        emitGameOver(winner, score1, score2, "ai");
+        emitGameOver(winner, score1, score2, "ai", tip1, tip2);
       } catch (err) {
         console.error("[pickWinner] error:", err.message);
         const s1 = Math.floor(Math.random() * 101);
         const s2 = Math.floor(Math.random() * 101);
         console.log(`[game_over] room "${roomId}" — RANDOM fallback`);
-        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", err.message);
+        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", null, null, err.message);
       }
 
       delete rooms[roomId];
