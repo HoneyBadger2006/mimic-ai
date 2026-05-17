@@ -111,6 +111,18 @@ io.on("connection", (socket) => {
 
       io.to(roomId).emit("judging");
 
+      const f1 = room.frames[p1];
+      const f2 = room.frames[p2];
+      if (!f1 || !f2) {
+        console.error("[submit_frame] One or both frames are empty — skipping AI scoring");
+        const s1 = Math.floor(Math.random() * 101);
+        const s2 = Math.floor(Math.random() * 101);
+        const winner = s1 >= s2 ? p1 : p2;
+        io.to(roomId).emit("game_over", { winner, scores: { [p1]: s1, [p2]: s2 }, scoredBy: "random", error: "Empty frame data" });
+        delete rooms[roomId];
+        return;
+      }
+
       try {
         const { winner: winnerIndex, score1, score2 } = await pickWinner(
           room.frames[p1],

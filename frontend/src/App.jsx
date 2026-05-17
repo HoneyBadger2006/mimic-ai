@@ -98,13 +98,19 @@ export default function App() {
   function captureAndSubmit() {
     const video  = videoRef.current
     const canvas = document.createElement('canvas')
+    const w = video?.videoWidth  || 640
+    const h = video?.videoHeight || 480
+    canvas.width  = w
+    canvas.height = h
     if (video && video.videoWidth) {
-      canvas.width  = video.videoWidth
-      canvas.height = video.videoHeight
       canvas.getContext('2d').drawImage(video, 0, 0)
     }
-    const base64 = canvas.toDataURL('image/jpeg', 0.85)
-      .replace(/^data:image\/jpeg;base64,/, '')
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    const base64  = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+    if (!base64) {
+      setError('Camera capture failed — check permissions and try again.')
+      return
+    }
     socket.emit('submit_frame', { frame: base64 })
   }
 
@@ -324,12 +330,10 @@ export default function App() {
             <VerdictText outcome={winner}>{winner.toUpperCase()}</VerdictText>
           </div>
 
-          {myScore !== null && (
-            <div style={{ display: 'flex', gap: 24, justifyContent: 'center' }}>
-              <ScoreCard label="You" score={myScore} highlight={isMe} />
-              <ScoreCard label="Opponent" score={oppScore} highlight={!isMe} />
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: 24, justifyContent: 'center' }}>
+            <ScoreCard label="You" score={myScore} highlight={isMe} />
+            <ScoreCard label="Opponent" score={oppScore} highlight={!isMe} />
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 360 }}>
             <OutlineButton color="cyan"    fullWidth onClick={handlePlayAgain}>Play Again</OutlineButton>
@@ -580,7 +584,7 @@ function ScoreCard({ label, score, highlight }) {
       </span>
 
       <span style={{ fontSize: '3.8rem', fontWeight: 900, lineHeight: 1, color: accent, fontFamily: "'Orbitron', sans-serif", textShadow: highlight ? '0 0 24px rgba(34,211,238,0.45)' : 'none' }}>
-        {score ?? '--'}
+        {score != null ? `${score}%` : '--'}
       </span>
 
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 5 }}>
