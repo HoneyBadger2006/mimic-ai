@@ -3,11 +3,11 @@ const http = require("http");
 const path = require("path");
 const { Server } = require("socket.io");
 const cors = require("cors");
-const { pickWinner } = require("./src/scorer");
+const { pickWinner, generatePrompt } = require("./src/scorer");
 
 const app = express();
 app.use(cors());
-app.use(express.static(path.join(__dirname, "../frontend")));
+app.use(express.static(path.join(__dirname, "../frontend/dist")));
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -16,10 +16,8 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 
-// roomId -> { players: [socketId, ...], frames: { socketId: base64 } }
+// roomId -> { players: [socketId, ...], frames: { socketId: base64 }, prompt: string }
 const rooms = {};
-
-const PROMPT = "Make your best surprised face! 😲";
 
 function startCountdown(roomId) {
   let count = 3;
@@ -62,9 +60,37 @@ io.on("connection", (socket) => {
 
     if (room.players.length === 2) {
       io.to(roomId).emit("game_start", { roomId, players: room.players });
-      io.to(roomId).emit("prompt_ready", { prompt: PROMPT });
-      startCountdown(roomId);
-      console.log(`[game_start] room "${roomId}" — countdown started`);
+      io.to(roomId).emit("prompt_ready", { prompt: "Generating challenge…" });
+
+      generatePrompt()
+        .then((prompt) => {
+          rooms[roomId] && (rooms[roomId].prompt = prompt);
+          io.to(roomId).emit("prompt_ready", { prompt });
+          console.log(`[prompt] "${prompt}"`);
+          // 3s pose window, then 3s countdown
+          setTimeout(() => startCountdown(roomId), 3000);
+        })
+        .catch((err) => {
+          console.error("[generatePrompt] error:", err.message);
+          const prompts = [
+            "Make your best surprised face! 😲",
+            "Pretend you just won the lottery! 🤑",
+            "Act like you saw a ghost! 👻",
+            "Do your best robot impression! 🤖",
+            "Pretend you just bit into a lemon! 🍋",
+            "Make the angriest face you can! 😡",
+            "Act like you're falling asleep! 😴",
+            "Pretend you smell something terrible! 🤢",
+            "Do your best villain laugh! 😈",
+            "Act like you just heard the best news ever! 🎉",
+          ];
+          const fallback = prompts[Math.floor(Math.random() * prompts.length)];
+          rooms[roomId] && (rooms[roomId].prompt = fallback);
+          io.to(roomId).emit("prompt_ready", { prompt: fallback });
+          setTimeout(() => startCountdown(roomId), 3000);
+        });
+
+      console.log(`[game_start] room "${roomId}" — generating prompt…`);
     }
   });
 
@@ -85,20 +111,40 @@ io.on("connection", (socket) => {
 
       io.to(roomId).emit("judging");
 
+      const f1 = room.frames[p1];
+      const f2 = room.frames[p2];
+
+      function emitGameOver(winner, s1, s2, scoredBy, error) {
+        const p1Socket = io.sockets.sockets.get(p1);
+        const p2Socket = io.sockets.sockets.get(p2);
+        const base = { winner, scoredBy, ...(error ? { error } : {}) };
+        p1Socket?.emit("game_over", { ...base, yourScore: s1, oppScore: s2 });
+        p2Socket?.emit("game_over", { ...base, yourScore: s2, oppScore: s1 });
+      }
+
+      if (!f1 || !f2) {
+        console.error("[submit_frame] One or both frames are empty — skipping AI scoring");
+        const s1 = Math.floor(Math.random() * 101);
+        const s2 = Math.floor(Math.random() * 101);
+        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", "Empty frame data");
+        delete rooms[roomId];
+        return;
+      }
+
       try {
-        const { winner: winnerIndex } = await pickWinner(
-          room.frames[p1],
-          room.frames[p2],
-          PROMPT
+        const { winner: winnerIndex, score1, score2 } = await pickWinner(
+          f1, f2,
+          room.prompt ?? "Make your best surprised face!"
         );
         const winner = winnerIndex === 1 ? p1 : p2;
-        console.log(`[game_over] room "${roomId}" — winner: ${winner}`);
-        io.to(roomId).emit("game_over", { winner });
+        console.log(`[game_over] room "${roomId}" — winner: ${winner} | scores: p1=${score1} p2=${score2} (AI scored)`);
+        emitGameOver(winner, score1, score2, "ai");
       } catch (err) {
-        console.error("[pickWinner] error:", err);
-        // fallback: random winner
-        const winner = room.players[Math.floor(Math.random() * 2)];
-        io.to(roomId).emit("game_over", { winner });
+        console.error("[pickWinner] error:", err.message);
+        const s1 = Math.floor(Math.random() * 101);
+        const s2 = Math.floor(Math.random() * 101);
+        console.log(`[game_over] room "${roomId}" — RANDOM fallback`);
+        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", err.message);
       }
 
       delete rooms[roomId];
