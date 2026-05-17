@@ -5,9 +5,16 @@ const {
   InvokeModelCommand,
 } = require("@aws-sdk/client-bedrock-runtime");
 
-const client = new BedrockRuntimeClient({
+const clientConfig = {
   region: process.env.AWS_REGION || "us-west-2",
-});
+};
+
+// Use bearer token if provided, otherwise fall back to IAM credentials
+if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
+  clientConfig.token = async () => ({ token: process.env.AWS_BEARER_TOKEN_BEDROCK });
+}
+
+const client = new BedrockRuntimeClient(clientConfig);
 
 const MODEL_ID = "us.anthropic.claude-sonnet-4-20250514-v1:0";
 
