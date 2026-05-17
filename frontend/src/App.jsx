@@ -50,13 +50,12 @@ export default function App() {
       stopWebcam()
     })
 
-    socket.on('game_over', ({ winner: winnerId, scores, scoredBy, error }) => {
-      const me = socket.id
-      const oppId = Object.keys(scores ?? {}).find(id => id !== me)
-      setIsMe(winnerId === me)
-      setWinner(winnerId === me ? 'win' : 'lose')
-      setMyScore(scores?.[me] ?? null)
-      setOppScore(scores?.[oppId] ?? null)
+    socket.on('game_over', ({ winner: winnerId, yourScore, oppScore, scoredBy, error }) => {
+      const won = winnerId === socket.id
+      setIsMe(won)
+      setWinner(won ? 'win' : 'lose')
+      setMyScore(yourScore ?? null)
+      setOppScore(oppScore ?? null)
       setPhase(PHASE.RESULTS)
       if (scoredBy === 'random') {
         console.warn('[DEBUG] Bedrock scoring failed, random winner picked. Error:', error)

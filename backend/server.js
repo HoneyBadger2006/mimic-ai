@@ -113,33 +113,38 @@ io.on("connection", (socket) => {
 
       const f1 = room.frames[p1];
       const f2 = room.frames[p2];
+
+      function emitGameOver(winner, s1, s2, scoredBy, error) {
+        const p1Socket = io.sockets.sockets.get(p1);
+        const p2Socket = io.sockets.sockets.get(p2);
+        const base = { winner, scoredBy, ...(error ? { error } : {}) };
+        p1Socket?.emit("game_over", { ...base, yourScore: s1, oppScore: s2 });
+        p2Socket?.emit("game_over", { ...base, yourScore: s2, oppScore: s1 });
+      }
+
       if (!f1 || !f2) {
         console.error("[submit_frame] One or both frames are empty — skipping AI scoring");
         const s1 = Math.floor(Math.random() * 101);
         const s2 = Math.floor(Math.random() * 101);
-        const winner = s1 >= s2 ? p1 : p2;
-        io.to(roomId).emit("game_over", { winner, scores: { [p1]: s1, [p2]: s2 }, scoredBy: "random", error: "Empty frame data" });
+        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", "Empty frame data");
         delete rooms[roomId];
         return;
       }
 
       try {
         const { winner: winnerIndex, score1, score2 } = await pickWinner(
-          room.frames[p1],
-          room.frames[p2],
+          f1, f2,
           room.prompt ?? "Make your best surprised face!"
         );
         const winner = winnerIndex === 1 ? p1 : p2;
-        const scores = { [p1]: score1, [p2]: score2 };
-        console.log(`[game_over] room "${roomId}" — winner: ${winner} | scores: ${JSON.stringify(scores)} (AI scored)`);
-        io.to(roomId).emit("game_over", { winner, scores, scoredBy: "ai" });
+        console.log(`[game_over] room "${roomId}" — winner: ${winner} | scores: p1=${score1} p2=${score2} (AI scored)`);
+        emitGameOver(winner, score1, score2, "ai");
       } catch (err) {
         console.error("[pickWinner] error:", err.message);
         const s1 = Math.floor(Math.random() * 101);
         const s2 = Math.floor(Math.random() * 101);
-        const winner = s1 >= s2 ? p1 : p2;
-        console.log(`[game_over] room "${roomId}" — winner: ${winner} (RANDOM fallback)`);
-        io.to(roomId).emit("game_over", { winner, scores: { [p1]: s1, [p2]: s2 }, scoredBy: "random", error: err.message });
+        console.log(`[game_over] room "${roomId}" — RANDOM fallback`);
+        emitGameOver(s1 >= s2 ? p1 : p2, s1, s2, "random", err.message);
       }
 
       delete rooms[roomId];
