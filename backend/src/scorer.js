@@ -134,11 +134,30 @@ async function pickWinner(frame1, frame2, prompt) {
   };
 }
 
+const PROMPT_CATEGORIES = [
+  "extreme emotion (anger, joy, terror, disgust, awe)",
+  "movie/TV character moment (villain laugh, hero pose, shocked reaction)",
+  "physical sensation reaction (tasting something awful, touching something slimy, smelling something terrible, freezing cold)",
+  "social awkward moment (caught doing something embarrassing, fake crying, pretending to be asleep)",
+  "animal impression using only face and hands",
+  "sports/action moment (slow-motion victory, referee call, dramatic sports failure)",
+  "everyday frustration (stuck in traffic, Wi-Fi cuts out, autocorrect fail)",
+  "unexpected news reaction (getting fired, winning lottery, seeing your ex)",
+  "food/taste reaction (eating something amazing, first bite of durian, brain freeze)",
+  "supernatural/horror moment (seeing a ghost, cursed mirror, possessed by a demon)",
+];
+
 /**
  * Ask Claude to generate a fresh mimic challenge visible on a webcam.
+ * @param {string[]} recentPrompts - Prompts used recently to avoid repetition
  * @returns {Promise<string>} e.g. "Pretend you just saw a ghost 👻"
  */
-async function generatePrompt() {
+async function generatePrompt(recentPrompts = []) {
+  const category = PROMPT_CATEGORIES[Math.floor(Math.random() * PROMPT_CATEGORIES.length)];
+  const avoidClause = recentPrompts.length > 0
+    ? `\nDo NOT use any of these recently used challenges: ${recentPrompts.map(p => `"${p}"`).join(", ")}.`
+    : "";
+
   const body = {
     anthropic_version: "bedrock-2023-05-31",
     max_tokens: 40,
@@ -146,11 +165,10 @@ async function generatePrompt() {
       {
         role: "user",
         content:
-          `Generate a short, fun challenge for a webcam mimic game. ` +
-          `It must be something clearly visible on a face or with hands — ` +
-          `like an expression, reaction, or simple pose. ` +
-          `Be creative and varied: mix emotions, movie moments, everyday reactions. ` +
-          `Reply with ONLY the challenge text (under 10 words), add one relevant emoji at the end.`,
+          `Generate a short, fun challenge for a webcam mimic game in the category: "${category}". ` +
+          `It must be clearly visible on a face or with hands.` +
+          avoidClause +
+          ` Reply with ONLY the challenge text (under 10 words), add one relevant emoji at the end.`,
       },
     ],
   };

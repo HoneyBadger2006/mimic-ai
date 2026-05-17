@@ -19,6 +19,42 @@ const PORT = process.env.PORT || 3001;
 // roomId -> { players: [socketId, ...], frames: { socketId: base64 }, prompt: string }
 const rooms = {};
 
+const FALLBACK_PROMPTS = [
+  "Make your best surprised face! 😲",
+  "Pretend you just won the lottery! 🤑",
+  "Act like you saw a ghost! 👻",
+  "Do your best robot impression! 🤖",
+  "Pretend you just bit into a lemon! 🍋",
+  "Make the angriest face you can! 😡",
+  "Act like you're falling asleep! 😴",
+  "Pretend you smell something terrible! 🤢",
+  "Do your best villain laugh! 😈",
+  "Act like you just heard the best news ever! 🎉",
+  "Pretend you're freezing cold! 🥶",
+  "React like you just saw a spider! 🕷️",
+  "Do your saddest puppy face! 🐶",
+  "Pretend you're stuck in quicksand! 😰",
+  "Act like you're the main character in a drama! 🎭",
+  "Make your best 'I'm so confused' face! 🤔",
+  "Pretend you're eating the world's spiciest food! 🌶️",
+  "Do your best monster face! 👹",
+  "Act like you just received terrible news! 😱",
+  "Pretend you're a snobby aristocrat! 🎩",
+  "Show pure disgust — something is truly revolting! 🤮",
+  "Do your best 'plotting something evil' face! 😏",
+  "Pretend you're having the best meal of your life! 😋",
+  "Act like you're caught in a thunderstorm! ⛈️",
+  "Do your best 'I'm totally innocent' face! 😇",
+  "Pretend your hands are stuck in slime! 🫨",
+  "Make your best 'legendary sports moment' pose! 🏆",
+  "Act like you see your celebrity crush! 😍",
+  "Do your best 'buffering' frozen face! ⏳",
+  "Pretend you just got jumpscared! 😨",
+];
+
+// Ring buffer of recent prompts to avoid repetition (max 15)
+const recentPrompts = [];
+
 function startCountdown(roomId) {
   let count = 3;
   io.to(roomId).emit("countdown", { count });
@@ -62,31 +98,25 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("game_start", { roomId, players: room.players });
       io.to(roomId).emit("prompt_ready", { prompt: "Generating challenge…" });
 
-      generatePrompt()
+      generatePrompt([...recentPrompts])
         .then((prompt) => {
           rooms[roomId] && (rooms[roomId].prompt = prompt);
           io.to(roomId).emit("prompt_ready", { prompt });
           console.log(`[prompt] "${prompt}"`);
+          recentPrompts.push(prompt);
+          if (recentPrompts.length > 15) recentPrompts.shift();
           // 3s pose window, then 3s countdown
           setTimeout(() => startCountdown(roomId), 3000);
         })
         .catch((err) => {
           console.error("[generatePrompt] error:", err.message);
-          const prompts = [
-            "Make your best surprised face! 😲",
-            "Pretend you just won the lottery! 🤑",
-            "Act like you saw a ghost! 👻",
-            "Do your best robot impression! 🤖",
-            "Pretend you just bit into a lemon! 🍋",
-            "Make the angriest face you can! 😡",
-            "Act like you're falling asleep! 😴",
-            "Pretend you smell something terrible! 🤢",
-            "Do your best villain laugh! 😈",
-            "Act like you just heard the best news ever! 🎉",
-          ];
-          const fallback = prompts[Math.floor(Math.random() * prompts.length)];
+          const available = FALLBACK_PROMPTS.filter(p => !recentPrompts.includes(p));
+          const pool = available.length > 0 ? available : FALLBACK_PROMPTS;
+          const fallback = pool[Math.floor(Math.random() * pool.length)];
           rooms[roomId] && (rooms[roomId].prompt = fallback);
           io.to(roomId).emit("prompt_ready", { prompt: fallback });
+          recentPrompts.push(fallback);
+          if (recentPrompts.length > 15) recentPrompts.shift();
           setTimeout(() => startCountdown(roomId), 3000);
         });
 

@@ -14,6 +14,16 @@ const PROMPTS = [
   "Pure rage",
   "Try not to smile",
   "Maximum cringe",
+  "Act like you saw a ghost",
+  "Villain laugh",
+  "Pretend you smell something awful",
+  "Frozen in shock",
+  "Caught red-handed face",
+  "Eating something disgusting",
+  "Totally innocent look",
+  "You just won the lottery",
+  "Robot malfunction",
+  "World's saddest face",
 ];
 
 const OUTCOMES = [
