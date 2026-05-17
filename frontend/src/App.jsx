@@ -1,11 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, createContext, useContext } from 'react'
 import { io } from 'socket.io-client'
 
-const SOCKET_URL = import.meta.env.DEV
-  ? `http://${window.location.hostname}:3001`
-  : window.location.origin
+const MobileCtx = createContext(false)
+function useIsMobile() {
+  const [m, setM] = useState(() => window.innerWidth < 700)
+  useEffect(() => {
+    const fn = () => setM(window.innerWidth < 700)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return m
+}
 
-const socket = io(SOCKET_URL)
+const socket = io(window.location.origin)
 
 const PHASE = {
   JOINING:  'joining',
@@ -16,6 +23,7 @@ const PHASE = {
 }
 
 export default function App() {
+  const isMobile = useIsMobile()
   const [phase, setPhase]       = useState(PHASE.JOINING)
   const [roomId, setRoomId]     = useState('')
   const [prompt, setPrompt]     = useState('')
@@ -28,11 +36,16 @@ export default function App() {
   const [myPhoto, setMyPhoto]   = useState(null)
   const [oppPhoto, setOppPhoto] = useState(null)
   const [tip, setTip]           = useState(null)
-  const videoRef  = useRef(null)
-  const streamRef = useRef(null)
+  const videoRef        = useRef(null)
+  const streamRef       = useRef(null)
+  const winAudioRef     = useRef(null)
+  const rematchTimerRef = useRef(null)
 
   useEffect(() => {
-    socket.on('game_start', () => { setError('') })
+    socket.on('game_start', () => {
+      setError('')
+      clearTimeout(rematchTimerRef.current)
+    })
 
     socket.on('prompt_ready', ({ prompt: p, promptScoredBy, error }) => {
       setPrompt(p)
@@ -85,13 +98,77 @@ export default function App() {
     }
   }, [])
 
+  // Create audio once on mount and unlock it on first user tap (required by iOS)
+  useEffect(() => {
+    const audio = new Audio('/win.mp3')
+    audio.preload = 'auto'
+    winAudioRef.current = audio
+
+    const unlock = () => {
+      audio.volume = 0
+      audio.play()
+        .then(() => { audio.pause(); audio.currentTime = 0; audio.volume = 1 })
+        .catch(() => {})
+    }
+    document.addEventListener('touchstart', unlock, { once: true })
+    document.addEventListener('click',      unlock, { once: true })
+
+    return () => {
+      document.removeEventListener('touchstart', unlock)
+      document.removeEventListener('click',      unlock)
+      audio.pause()
+    }
+  }, [])
+
+  // Play win sound and fade after 10s — reuses the already-unlocked audio element
+  useEffect(() => {
+    const audio = winAudioRef.current
+    if (!audio) return
+
+    if (phase !== PHASE.RESULTS || !isMe) {
+      audio.pause()
+      audio.currentTime = 0
+      return
+    }
+
+    audio.currentTime = 7
+    audio.volume = 1
+    audio.play().catch(() => {})
+
+    let fadeInterval = null
+    const fadeStart = setTimeout(() => {
+      fadeInterval = setInterval(() => {
+        if (audio.volume > 0.05) {
+          audio.volume = Math.max(0, audio.volume - 0.05)
+        } else {
+          audio.volume = 0
+          audio.pause()
+          clearInterval(fadeInterval)
+        }
+      }, 100)
+    }, 10000)
+
+    return () => {
+      clearTimeout(fadeStart)
+      if (fadeInterval) clearInterval(fadeInterval)
+      audio.pause()
+      audio.currentTime = 0
+    }
+  }, [phase, isMe])
+
   async function startWebcam() {
     const stream = await navigator.mediaDevices
-      .getUserMedia({ video: true, audio: false })
+      .getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      })
       .catch(console.error)
     if (!stream) return
     streamRef.current = stream
-    if (videoRef.current) videoRef.current.srcObject = stream
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream
+      await videoRef.current.play().catch(() => {})
+    }
   }
 
   function stopWebcam() {
@@ -99,24 +176,32 @@ export default function App() {
     streamRef.current = null
   }
 
-  function captureAndSubmit() {
-    const video  = videoRef.current
+  async function captureAndSubmit() {
+    const video = videoRef.current
+
+    // Wait up to 3s for the video to have a live frame (critical on mobile)
+    if (video && video.readyState < 2) {
+      await new Promise(resolve => {
+        const done = () => { video.removeEventListener('canplay', done); resolve() }
+        video.addEventListener('canplay', done)
+        setTimeout(resolve, 3000)
+      })
+    }
+
     const canvas = document.createElement('canvas')
-    const w = video?.videoWidth  || 640
-    const h = video?.videoHeight || 480
+    const w = (video?.videoWidth  > 0 ? video.videoWidth  : 640)
+    const h = (video?.videoHeight > 0 ? video.videoHeight : 480)
     canvas.width  = w
     canvas.height = h
-    if (video && video.videoWidth) {
+
+    if (video && video.readyState >= 2 && video.videoWidth > 0) {
       canvas.getContext('2d').drawImage(video, 0, 0)
     }
+
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
     setMyPhoto(dataUrl)
-    const base64  = dataUrl.replace(/^data:image\/\w+;base64,/, '')
-    if (!base64) {
-      setError('Camera capture failed — check permissions and try again.')
-      return
-    }
-    socket.emit('submit_frame', { frame: base64 })
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '')
+    socket.emit('submit_frame', { frame: base64 || null })
   }
 
   function handleJoin() {
@@ -128,7 +213,6 @@ export default function App() {
   }
 
   function handlePlayAgain() {
-    setPhase(PHASE.JOINING)
     setPrompt('')
     setCountdown(null)
     setWinner('')
@@ -138,11 +222,19 @@ export default function App() {
     setOppPhoto(null)
     setTip(null)
     setError('')
+    socket.emit('join_room', { roomId })
+    setPhase(PHASE.WAITING)
+
+    rematchTimerRef.current = setTimeout(() => {
+      setPhase(PHASE.JOINING)
+      setError('Opponent did not rematch. Returning to menu…')
+    }, 20000)
   }
 
   const showWebcam = phase === PHASE.PROMPT || phase === PHASE.JUDGING
 
   return (
+    <MobileCtx.Provider value={isMobile}>
     <HudViewport>
       {/* Error banner */}
       {error && (
@@ -188,7 +280,7 @@ export default function App() {
                 fontFamily: "'Rajdhani', sans-serif",
                 fontSize: 18, fontWeight: 600,
                 letterSpacing: '0.20em', textTransform: 'uppercase',
-                textAlign: 'center', outline: 'none', width: 280,
+                textAlign: 'center', outline: 'none', width: 'min(280px, 85vw)',
               }}
             />
             <OutlineButton color="cyan" onClick={handleJoin}>Join Game</OutlineButton>
@@ -208,17 +300,17 @@ export default function App() {
         </div>
       )}
 
-      {/* ── PROMPT + JUDGING — two-column play surface ──────────────── */}
+      {/* ── PROMPT + JUDGING — play surface ─────────────────────────── */}
       {showWebcam && (
         <div style={{
           minHeight: '100vh',
-          padding: '70px 64px 56px',
+          padding: isMobile ? '20px 16px 24px' : '70px 64px 56px',
           display: 'grid',
-          gridTemplateColumns: 'minmax(300px, 1fr) minmax(380px, 1fr)',
-          gap: 64, alignItems: 'center',
+          gridTemplateColumns: isMobile ? '1fr' : 'minmax(300px, 1fr) minmax(380px, 1fr)',
+          gap: isMobile ? 20 : 64, alignItems: 'center',
         }}>
           {/* LEFT — webcam viewfinder */}
-          <BracketFrame color="cyan" label="Your Scan" style={{ aspectRatio: '3 / 4', width: '100%' }}>
+          <BracketFrame color="cyan" label="Your Scan" style={{ aspectRatio: isMobile ? '4 / 3' : '3 / 4', width: '100%' }}>
             {/* Live video */}
             <video
               ref={videoRef}
@@ -282,7 +374,7 @@ export default function App() {
           {/* RIGHT — HUD column */}
           <div style={{
             display: 'flex', flexDirection: 'column',
-            alignItems: 'center', gap: 36, textAlign: 'center',
+            alignItems: 'center', gap: isMobile ? 16 : 36, textAlign: 'center',
           }}>
             {phase === PHASE.PROMPT && (
               <>
@@ -290,10 +382,7 @@ export default function App() {
                   <Eyebrow color="cyan">Challenge</Eyebrow>
                   <PromptText>{prompt}</PromptText>
                 </div>
-                {countdown !== null
-                  ? <CountdownRing seconds={countdown} />
-                  : <Eyebrow color="cyan">Strike your pose</Eyebrow>
-                }
+                {countdown === null && <Eyebrow color="cyan">Strike your pose</Eyebrow>}
               </>
             )}
 
@@ -328,7 +417,7 @@ export default function App() {
           minHeight: '100vh',
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
-          gap: 40, padding: '0 32px',
+          gap: isMobile ? 20 : 40, padding: isMobile ? '32px 16px' : '0 32px',
           background: isMe
             ? 'radial-gradient(60% 50% at 50% 50%, rgba(34,211,238,0.18), transparent 70%)'
             : 'radial-gradient(60% 50% at 50% 50%, rgba(239,68,68,0.18), transparent 70%)',
@@ -338,9 +427,9 @@ export default function App() {
             <VerdictText outcome={winner}>{winner.toUpperCase()}</VerdictText>
           </div>
 
-          <div style={{ display: 'flex', gap: 24, justifyContent: 'center' }}>
-            <ScoreCard label="You" score={myScore} highlight={isMe} />
-            <ScoreCard label="Opponent" score={oppScore} highlight={!isMe} />
+          <div style={{ display: 'flex', gap: isMobile ? 12 : 24, justifyContent: 'center', width: '100%' }}>
+            <ScoreCard label="You" score={myScore} winner={isMe} />
+            <ScoreCard label="Opponent" score={oppScore} winner={!isMe} />
           </div>
 
           {/* Prompt used */}
@@ -357,13 +446,13 @@ export default function App() {
               {myPhoto && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                   <div style={{ fontSize: 10, letterSpacing: '0.20em', textTransform: 'uppercase', color: isMe ? '#22d3ee' : 'rgba(255,255,255,0.35)', fontFamily: "'Rajdhani', sans-serif" }}>You</div>
-                  <img src={myPhoto} alt="Your face" style={{ width: 180, borderRadius: 10, border: `2px solid ${isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`, transform: 'scaleX(-1)' }} />
+                  <img src={myPhoto} alt="Your face" style={{ width: isMobile ? 130 : 180, borderRadius: 10, border: `2px solid ${isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`, transform: 'scaleX(-1)' }} />
                 </div>
               )}
               {oppPhoto && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                   <div style={{ fontSize: 10, letterSpacing: '0.20em', textTransform: 'uppercase', color: !isMe ? '#22d3ee' : 'rgba(255,255,255,0.35)', fontFamily: "'Rajdhani', sans-serif" }}>Opponent</div>
-                  <img src={oppPhoto} alt="Opponent face" style={{ width: 180, borderRadius: 10, border: `2px solid ${!isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`, transform: 'scaleX(-1)' }} />
+                  <img src={oppPhoto} alt="Opponent face" style={{ width: isMobile ? 130 : 180, borderRadius: 10, border: `2px solid ${!isMe ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.15)'}`, transform: 'scaleX(-1)' }} />
                 </div>
               )}
             </div>
@@ -372,7 +461,7 @@ export default function App() {
           {/* AI tip */}
           {tip && (
             <div style={{
-              maxWidth: 420, padding: '16px 22px',
+              maxWidth: isMobile ? '100%' : 420, padding: '16px 22px',
               border: '1px solid rgba(250,204,21,0.35)',
               borderRadius: 10,
               background: 'rgba(250,204,21,0.06)',
@@ -383,7 +472,7 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 360 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: isMobile ? '100%' : 360 }}>
             <OutlineButton color="cyan"    fullWidth onClick={handlePlayAgain}>Play Again</OutlineButton>
             <OutlineButton color="neutral" fullWidth onClick={() => { setPhase(PHASE.JOINING); setError('') }}>
               Return to Menu
@@ -392,6 +481,7 @@ export default function App() {
         </div>
       )}
     </HudViewport>
+    </MobileCtx.Provider>
   )
 }
 
@@ -577,6 +667,7 @@ function StatusTag({ children }) {
 }
 
 function OutlineButton({ color = 'cyan', onClick, children, fullWidth = false }) {
+  const isMobile = useContext(MobileCtx)
   const palettes = {
     cyan:    { c: '#22d3ee', bg: 'rgba(34,211,238,0.10)', glow: '0 0 16px rgba(34,211,238,0.45)' },
     red:     { c: '#ef4444', bg: 'rgba(239,68,68,0.10)',  glow: '0 0 16px rgba(239,68,68,0.45)'  },
@@ -600,38 +691,42 @@ function OutlineButton({ color = 'cyan', onClick, children, fullWidth = false })
         cursor: 'pointer',
         boxShadow: hover ? p.glow : 'none',
         transition: 'background 0.15s, box-shadow 0.15s',
-        width: fullWidth ? '100%' : 'auto',
-        minWidth: fullWidth ? 'auto' : 240,
+        width: fullWidth || isMobile ? '100%' : 'auto',
+        minWidth: fullWidth || isMobile ? 'auto' : 240,
       }}>
       {children}
     </button>
   )
 }
 
-function ScoreCard({ label, score, highlight }) {
+function ScoreCard({ label, score, winner }) {
+  const isMobile = useContext(MobileCtx)
   const [filled, setFilled] = useState(0)
   useEffect(() => {
     const t = setTimeout(() => setFilled(score ?? 0), 120)
     return () => clearTimeout(t)
   }, [score])
 
-  const accent = highlight ? '#22d3ee' : 'rgba(255,255,255,0.55)'
-  const barColor = score >= 70 ? '#22d3ee' : score >= 40 ? '#facc15' : '#ef4444'
+  const accent      = winner ? '#22d3ee' : '#ef4444'
+  const borderColor = winner ? 'rgba(34,211,238,0.6)' : 'rgba(239,68,68,0.6)'
+  const bgColor     = winner ? 'rgba(34,211,238,0.08)' : 'rgba(239,68,68,0.08)'
+  const glowColor   = winner ? 'rgba(34,211,238,0.45)' : 'rgba(239,68,68,0.45)'
+  const barColor    = score >= 70 ? '#22d3ee' : score >= 40 ? '#facc15' : '#ef4444'
 
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-      padding: '22px 28px 18px',
-      border: `2px solid ${highlight ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.12)'}`,
+      padding: isMobile ? '14px 16px 12px' : '22px 28px 18px',
+      border: `2px solid ${borderColor}`,
       borderRadius: 14,
-      background: highlight ? 'rgba(34,211,238,0.08)' : 'rgba(255,255,255,0.04)',
-      minWidth: 148,
+      background: bgColor,
+      minWidth: isMobile ? 0 : 148, flex: isMobile ? 1 : 'none',
     }}>
       <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', fontFamily: "'Rajdhani', sans-serif" }}>
         {label}
       </span>
 
-      <span style={{ fontSize: '3.8rem', fontWeight: 900, lineHeight: 1, color: accent, fontFamily: "'Orbitron', sans-serif", textShadow: highlight ? '0 0 24px rgba(34,211,238,0.45)' : 'none' }}>
+      <span style={{ fontSize: '3.8rem', fontWeight: 900, lineHeight: 1, color: accent, fontFamily: "'Orbitron', sans-serif", textShadow: `0 0 24px ${glowColor}` }}>
         {score != null ? `${score}%` : '--'}
       </span>
 

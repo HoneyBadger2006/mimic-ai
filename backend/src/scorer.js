@@ -135,16 +135,16 @@ async function pickWinner(frame1, frame2, prompt) {
 }
 
 const PROMPT_CATEGORIES = [
-  "extreme emotion (anger, joy, terror, disgust, awe)",
-  "movie/TV character moment (villain laugh, hero pose, shocked reaction)",
-  "physical sensation reaction (tasting something awful, touching something slimy, smelling something terrible, freezing cold)",
-  "social awkward moment (caught doing something embarrassing, fake crying, pretending to be asleep)",
-  "animal impression using only face and hands",
-  "sports/action moment (slow-motion victory, referee call, dramatic sports failure)",
-  "everyday frustration (stuck in traffic, Wi-Fi cuts out, autocorrect fail)",
-  "unexpected news reaction (getting fired, winning lottery, seeing your ex)",
-  "food/taste reaction (eating something amazing, first bite of durian, brain freeze)",
-  "supernatural/horror moment (seeing a ghost, cursed mirror, possessed by a demon)",
+  "happiness or excitement: winning something, best news ever, can't stop smiling",
+  "sadness or crying: just lost something, deeply disappointed, about to cry",
+  "anger or frustration: furious, annoyed, fed up",
+  "fear or shock: saw a ghost, jump scare, something terrifying",
+  "disgust: something smells awful, tasted something terrible, saw something gross",
+  "surprise: totally unexpected news, jaw drop, can't believe it",
+  "embarrassment or guilt: caught doing something wrong, awkward moment, red-faced",
+  "boredom or tiredness: falling asleep, completely uninterested, exhausted",
+  "love or admiration: seeing a crush, something adorable, deeply touched",
+  "confusion or disbelief: nothing makes sense, totally lost, what just happened",
 ];
 
 /**
@@ -165,10 +165,11 @@ async function generatePrompt(recentPrompts = []) {
       {
         role: "user",
         content:
-          `Generate a short, fun challenge for a webcam mimic game in the category: "${category}". ` +
-          `It must be clearly visible on a face or with hands.` +
+          `Write a fun facial expression challenge for a photo game. Emotion category: ${category}. ` +
+          `Rules: simple words only (anyone can understand); start with "Show" or "Look" or "Make a face like"; max 6 words + 1 emoji at the end. ` +
+          `Examples: "Show pure happiness! 😄", "Look totally terrified! 😱", "Make a face like you smell something awful 🤢", "Look like you just won a million dollars! 🤑".` +
           avoidClause +
-          ` Reply with ONLY the challenge text (under 10 words), add one relevant emoji at the end.`,
+          ` Reply with ONLY the challenge text, nothing else.`,
       },
     ],
   };
