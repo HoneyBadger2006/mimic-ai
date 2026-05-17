@@ -112,19 +112,22 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("judging");
 
       try {
-        const { winner: winnerIndex } = await pickWinner(
+        const { winner: winnerIndex, score1, score2 } = await pickWinner(
           room.frames[p1],
           room.frames[p2],
           room.prompt ?? "Make your best surprised face!"
         );
         const winner = winnerIndex === 1 ? p1 : p2;
-        console.log(`[game_over] room "${roomId}" — winner: ${winner}`);
-        io.to(roomId).emit("game_over", { winner });
+        const scores = { [p1]: score1, [p2]: score2 };
+        console.log(`[game_over] room "${roomId}" — winner: ${winner} | scores: ${JSON.stringify(scores)}`);
+        io.to(roomId).emit("game_over", { winner, scores });
       } catch (err) {
         console.error("[pickWinner] error:", err);
-        // fallback: random winner
-        const winner = room.players[Math.floor(Math.random() * 2)];
-        io.to(roomId).emit("game_over", { winner });
+        // fallback: random winner + random scores
+        const s1 = Math.floor(Math.random() * 101);
+        const s2 = Math.floor(Math.random() * 101);
+        const winner = s1 >= s2 ? p1 : p2;
+        io.to(roomId).emit("game_over", { winner, scores: { [p1]: s1, [p2]: s2 } });
       }
 
       delete rooms[roomId];

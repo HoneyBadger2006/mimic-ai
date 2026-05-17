@@ -73,16 +73,16 @@ async function scoreImage(base64Image, prompt) {
 }
 
 /**
- * Send both frames to Claude and ask which player better matched the prompt.
+ * Send both frames to Claude, get individual accuracy scores + winner in one call.
  * @param {string} frame1 - Base64 JPEG for player 1 (no data URI prefix)
  * @param {string} frame2 - Base64 JPEG for player 2 (no data URI prefix)
  * @param {string} prompt - The expression challenge
- * @returns {Promise<{winner: 1|2}>}
+ * @returns {Promise<{winner: 1|2, score1: number, score2: number}>}
  */
 async function pickWinner(frame1, frame2, prompt) {
   const body = {
     anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 32,
+    max_tokens: 64,
     messages: [
       {
         role: "user",
@@ -100,8 +100,8 @@ async function pickWinner(frame1, frame2, prompt) {
             text:
               `You are judging a facial expression contest. The challenge was: "${prompt}". ` +
               `The first image is Player 1, the second image is Player 2. ` +
-              `Which player better matches the challenge? ` +
-              `Reply with ONLY valid JSON, no explanation: {"winner": 1} or {"winner": 2}`,
+              `Score each player 0-100 on how accurately they performed the challenge, then pick the winner. ` +
+              `Reply with ONLY valid JSON, no explanation: {"winner": 1 or 2, "score1": <0-100>, "score2": <0-100>}`,
           },
         ],
       },
@@ -124,7 +124,11 @@ async function pickWinner(frame1, frame2, prompt) {
     throw new Error(`Unexpected winner value: ${text}`);
   }
 
-  return { winner: parsed.winner };
+  return {
+    winner: parsed.winner,
+    score1: Math.round(Math.min(100, Math.max(0, parsed.score1 ?? 50))),
+    score2: Math.round(Math.min(100, Math.max(0, parsed.score2 ?? 50))),
+  };
 }
 
 /**
