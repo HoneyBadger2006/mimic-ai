@@ -71,7 +71,7 @@ io.on("connection", (socket) => {
           setTimeout(() => startCountdown(roomId), 3000);
         })
         .catch((err) => {
-          console.error("[generatePrompt] error:", err);
+          console.error("[generatePrompt] error:", err.message);
           const prompts = [
             "Make your best surprised face! 😲",
             "Pretend you just won the lottery! 🤑",
@@ -86,7 +86,7 @@ io.on("connection", (socket) => {
           ];
           const fallback = prompts[Math.floor(Math.random() * prompts.length)];
           rooms[roomId] && (rooms[roomId].prompt = fallback);
-          io.to(roomId).emit("prompt_ready", { prompt: fallback });
+          io.to(roomId).emit("prompt_ready", { prompt: fallback, promptScoredBy: "fallback", error: err.message });
           setTimeout(() => startCountdown(roomId), 3000);
         });
 
@@ -112,22 +112,19 @@ io.on("connection", (socket) => {
       io.to(roomId).emit("judging");
 
       try {
-        const { winner: winnerIndex, score1, score2 } = await pickWinner(
+        const { winner: winnerIndex } = await pickWinner(
           room.frames[p1],
           room.frames[p2],
           room.prompt ?? "Make your best surprised face!"
         );
         const winner = winnerIndex === 1 ? p1 : p2;
-        const scores = { [p1]: score1, [p2]: score2 };
-        console.log(`[game_over] room "${roomId}" — winner: ${winner} | scores: ${JSON.stringify(scores)}`);
-        io.to(roomId).emit("game_over", { winner, scores });
+        console.log(`[game_over] room "${roomId}" — winner: ${winner} (AI scored)`);
+        io.to(roomId).emit("game_over", { winner, scoredBy: "ai" });
       } catch (err) {
-        console.error("[pickWinner] error:", err);
-        // fallback: random winner + random scores
-        const s1 = Math.floor(Math.random() * 101);
-        const s2 = Math.floor(Math.random() * 101);
-        const winner = s1 >= s2 ? p1 : p2;
-        io.to(roomId).emit("game_over", { winner, scores: { [p1]: s1, [p2]: s2 } });
+        console.error("[pickWinner] error:", err.message);
+        const winner = room.players[Math.floor(Math.random() * 2)];
+        console.log(`[game_over] room "${roomId}" — winner: ${winner} (RANDOM fallback)`);
+        io.to(roomId).emit("game_over", { winner, scoredBy: "random", error: err.message });
       }
 
       delete rooms[roomId];

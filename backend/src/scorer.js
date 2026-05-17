@@ -16,7 +16,7 @@ if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
 
 const client = new BedrockRuntimeClient(clientConfig);
 
-const MODEL_ID = "us.anthropic.claude-sonnet-4-20250514-v1:0";
+const MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
 /**
  * Score how well the person in the image is performing the given prompt.
@@ -62,7 +62,7 @@ async function scoreImage(base64Image, prompt) {
 
   const response = await client.send(command);
   const raw = JSON.parse(Buffer.from(response.body).toString("utf-8"));
-  const text = raw.content[0].text.trim();
+  const text = raw.content[0].text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
   const parsed = JSON.parse(text);
   if (typeof parsed.score !== "number") {
@@ -117,7 +117,7 @@ async function pickWinner(frame1, frame2, prompt) {
 
   const response = await client.send(command);
   const raw = JSON.parse(Buffer.from(response.body).toString("utf-8"));
-  const text = raw.content[0].text.trim();
+  const text = raw.content[0].text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
   const parsed = JSON.parse(text);
 
   if (parsed.winner !== 1 && parsed.winner !== 2) {

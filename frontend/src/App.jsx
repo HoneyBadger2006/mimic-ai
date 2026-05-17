@@ -22,8 +22,6 @@ export default function App() {
   const [countdown, setCountdown] = useState(null)
   const [winner, setWinner]     = useState('')
   const [isMe, setIsMe]         = useState(false)
-  const [myScore, setMyScore]   = useState(null)
-  const [oppScore, setOppScore] = useState(null)
   const [error, setError]       = useState('')
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
@@ -31,10 +29,14 @@ export default function App() {
   useEffect(() => {
     socket.on('game_start', () => { setError('') })
 
-    socket.on('prompt_ready', ({ prompt: p }) => {
+    socket.on('prompt_ready', ({ prompt: p, promptScoredBy, error }) => {
       setPrompt(p)
       setPhase(PHASE.PROMPT)
       startWebcam()
+      if (promptScoredBy === 'fallback') {
+        console.warn('[DEBUG] AI prompt generation failed, using fallback. Error:', error)
+        setError(`⚠️ AI prompt failed — using fallback (${error ?? 'unknown error'})`)
+      }
     })
 
     socket.on('countdown', ({ count }) => { setCountdown(count) })
@@ -46,14 +48,16 @@ export default function App() {
       stopWebcam()
     })
 
-    socket.on('game_over', ({ winner: winnerId, scores }) => {
-      const me = socket.id
-      const oppId = Object.keys(scores ?? {}).find(id => id !== me)
-      setIsMe(winnerId === me)
-      setWinner(winnerId === me ? 'win' : 'lose')
-      setMyScore(scores?.[me] ?? null)
-      setOppScore(scores?.[oppId] ?? null)
+    socket.on('game_over', ({ winner: winnerId, scoredBy, error }) => {
+      setIsMe(winnerId === socket.id)
+      setWinner(winnerId === socket.id ? 'win' : 'lose')
       setPhase(PHASE.RESULTS)
+      if (scoredBy === 'random') {
+        console.warn('[DEBUG] Bedrock scoring failed, random winner picked. Error:', error)
+        setError(`⚠️ AI scoring failed — random winner (${error ?? 'unknown error'})`)
+      } else {
+        console.log('[DEBUG] AI scored successfully')
+      }
     })
 
     socket.on('error',       ({ message }) => setError(message))
@@ -111,8 +115,6 @@ export default function App() {
     setPrompt('')
     setCountdown(null)
     setWinner('')
-    setMyScore(null)
-    setOppScore(null)
     setError('')
   }
 
@@ -313,14 +315,6 @@ export default function App() {
             <Eyebrow color={isMe ? 'cyan' : 'red'}>You</Eyebrow>
             <VerdictText outcome={winner}>{winner.toUpperCase()}</VerdictText>
           </div>
-
-          {/* Score cards */}
-          {myScore !== null && (
-            <div style={{ display: 'flex', gap: 24, justifyContent: 'center' }}>
-              <ScoreCard label="You" score={myScore} highlight={isMe} />
-              <ScoreCard label="Opponent" score={oppScore} highlight={!isMe} />
-            </div>
-          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 360 }}>
             <OutlineButton color="cyan"    fullWidth onClick={handlePlayAgain}>Play Again</OutlineButton>
@@ -544,26 +538,5 @@ function OutlineButton({ color = 'cyan', onClick, children, fullWidth = false })
       }}>
       {children}
     </button>
-  )
-}
-
-function ScoreCard({ label, score, highlight }) {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-      padding: '20px 32px',
-      border: `2px solid ${highlight ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.12)'}`,
-      borderRadius: 12,
-      background: highlight ? 'rgba(34,211,238,0.08)' : 'rgba(255,255,255,0.04)',
-      minWidth: 120,
-    }}>
-      <span style={{ fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', fontFamily: "'Rajdhani', sans-serif" }}>
-        {label}
-      </span>
-      <span style={{ fontSize: '3.5rem', fontWeight: 900, lineHeight: 1, color: highlight ? '#22d3ee' : '#fff', fontFamily: "'Orbitron', sans-serif" }}>
-        {score}
-      </span>
-      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.1em', fontFamily: "'Rajdhani', sans-serif" }}>ACCURACY %</span>
-    </div>
   )
 }
