@@ -22,6 +22,8 @@ export default function App() {
   const [countdown, setCountdown] = useState(null)
   const [winner, setWinner]     = useState('')
   const [isMe, setIsMe]         = useState(false)
+  const [myScore, setMyScore]   = useState(null)
+  const [oppScore, setOppScore] = useState(null)
   const [error, setError]       = useState('')
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
@@ -48,9 +50,13 @@ export default function App() {
       stopWebcam()
     })
 
-    socket.on('game_over', ({ winner: winnerId, scoredBy, error }) => {
-      setIsMe(winnerId === socket.id)
-      setWinner(winnerId === socket.id ? 'win' : 'lose')
+    socket.on('game_over', ({ winner: winnerId, scores, scoredBy, error }) => {
+      const me = socket.id
+      const oppId = Object.keys(scores ?? {}).find(id => id !== me)
+      setIsMe(winnerId === me)
+      setWinner(winnerId === me ? 'win' : 'lose')
+      setMyScore(scores?.[me] ?? null)
+      setOppScore(scores?.[oppId] ?? null)
       setPhase(PHASE.RESULTS)
       if (scoredBy === 'random') {
         console.warn('[DEBUG] Bedrock scoring failed, random winner picked. Error:', error)
@@ -115,6 +121,8 @@ export default function App() {
     setPrompt('')
     setCountdown(null)
     setWinner('')
+    setMyScore(null)
+    setOppScore(null)
     setError('')
   }
 
@@ -315,6 +323,13 @@ export default function App() {
             <Eyebrow color={isMe ? 'cyan' : 'red'}>You</Eyebrow>
             <VerdictText outcome={winner}>{winner.toUpperCase()}</VerdictText>
           </div>
+
+          {myScore !== null && (
+            <div style={{ display: 'flex', gap: 24, justifyContent: 'center' }}>
+              <ScoreCard label="You" score={myScore} highlight={isMe} />
+              <ScoreCard label="Opponent" score={oppScore} highlight={!isMe} />
+            </div>
+          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: 360 }}>
             <OutlineButton color="cyan"    fullWidth onClick={handlePlayAgain}>Play Again</OutlineButton>
@@ -538,5 +553,56 @@ function OutlineButton({ color = 'cyan', onClick, children, fullWidth = false })
       }}>
       {children}
     </button>
+  )
+}
+
+function ScoreCard({ label, score, highlight }) {
+  const [filled, setFilled] = useState(0)
+  useEffect(() => {
+    const t = setTimeout(() => setFilled(score ?? 0), 120)
+    return () => clearTimeout(t)
+  }, [score])
+
+  const accent = highlight ? '#22d3ee' : 'rgba(255,255,255,0.55)'
+  const barColor = score >= 70 ? '#22d3ee' : score >= 40 ? '#facc15' : '#ef4444'
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+      padding: '22px 28px 18px',
+      border: `2px solid ${highlight ? 'rgba(34,211,238,0.6)' : 'rgba(255,255,255,0.12)'}`,
+      borderRadius: 14,
+      background: highlight ? 'rgba(34,211,238,0.08)' : 'rgba(255,255,255,0.04)',
+      minWidth: 148,
+    }}>
+      <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', fontFamily: "'Rajdhani', sans-serif" }}>
+        {label}
+      </span>
+
+      <span style={{ fontSize: '3.8rem', fontWeight: 900, lineHeight: 1, color: accent, fontFamily: "'Orbitron', sans-serif", textShadow: highlight ? '0 0 24px rgba(34,211,238,0.45)' : 'none' }}>
+        {score ?? '--'}
+      </span>
+
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{
+          width: '100%', height: 6, borderRadius: 3,
+          background: 'rgba(255,255,255,0.08)',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            height: '100%', borderRadius: 3,
+            width: `${filled}%`,
+            background: `linear-gradient(90deg, ${barColor}88, ${barColor})`,
+            boxShadow: `0 0 8px ${barColor}88`,
+            transition: 'width 0.9s cubic-bezier(0.22,1,0.36,1)',
+          }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', fontFamily: "'Rajdhani', sans-serif" }}>0</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.12em', fontFamily: "'Rajdhani', sans-serif", textTransform: 'uppercase' }}>Accuracy</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', fontFamily: "'Rajdhani', sans-serif" }}>100</span>
+        </div>
+      </div>
+    </div>
   )
 }
