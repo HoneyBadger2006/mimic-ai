@@ -72,7 +72,19 @@ io.on("connection", (socket) => {
         })
         .catch((err) => {
           console.error("[generatePrompt] error:", err);
-          const fallback = "Make your best surprised face! 😲";
+          const prompts = [
+            "Make your best surprised face! 😲",
+            "Pretend you just won the lottery! 🤑",
+            "Act like you saw a ghost! 👻",
+            "Do your best robot impression! 🤖",
+            "Pretend you just bit into a lemon! 🍋",
+            "Make the angriest face you can! 😡",
+            "Act like you're falling asleep! 😴",
+            "Pretend you smell something terrible! 🤢",
+            "Do your best villain laugh! 😈",
+            "Act like you just heard the best news ever! 🎉",
+          ];
+          const fallback = prompts[Math.floor(Math.random() * prompts.length)];
           rooms[roomId] && (rooms[roomId].prompt = fallback);
           io.to(roomId).emit("prompt_ready", { prompt: fallback });
           setTimeout(() => startCountdown(roomId), 3000);
