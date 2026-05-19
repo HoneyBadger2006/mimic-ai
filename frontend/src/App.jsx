@@ -13,7 +13,13 @@ function useIsMobile() {
 }
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || window.location.origin
-const socket = io(BACKEND_URL, { transports: ['polling', 'websocket'] })
+const socket = io(BACKEND_URL, {
+  transports: ['polling', 'websocket'],
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 1000,
+  timeout: 20000,
+})
 
 const PHASE = {
   JOINING:  'joining',
