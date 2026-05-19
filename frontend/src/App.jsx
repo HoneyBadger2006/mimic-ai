@@ -44,15 +44,16 @@ export default function App() {
   const [oppPhoto, setOppPhoto] = useState(null)
   const [tip, setTip]           = useState(null)
   const [socketConnected, setSocketConnected] = useState(socket.connected)
+  const [socketError, setSocketError]         = useState('')
   const videoRef        = useRef(null)
   const streamRef       = useRef(null)
   const winAudioRef     = useRef(null)
   const rematchTimerRef = useRef(null)
 
   useEffect(() => {
-    socket.on('connect',         () => setSocketConnected(true))
+    socket.on('connect',         () => { setSocketConnected(true); setSocketError('') })
     socket.on('disconnect',      () => setSocketConnected(false))
-    socket.on('connect_error',   (err) => { setSocketConnected(false); console.error('[socket] connect_error', err.message) })
+    socket.on('connect_error',   (err) => { setSocketConnected(false); setSocketError(err.message) })
 
     socket.on('game_start', () => {
       setError('')
@@ -312,12 +313,13 @@ export default function App() {
           <StatusTag>Room: {roomId}</StatusTag>
           <div style={{
             fontSize: 11, fontFamily: 'monospace', color: 'rgba(255,255,255,0.35)',
-            textAlign: 'center', lineHeight: 1.6, maxWidth: 320,
+            textAlign: 'center', lineHeight: 1.6, maxWidth: 340, padding: '0 16px',
           }}>
             <div style={{ color: socketConnected ? '#4ade80' : '#f87171' }}>
               {socketConnected ? '● Connected' : '● Disconnected'}
             </div>
             <div>{BACKEND_URL}</div>
+            {socketError && <div style={{ color: '#fbbf24', marginTop: 4 }}>{socketError}</div>}
           </div>
         </div>
       )}
